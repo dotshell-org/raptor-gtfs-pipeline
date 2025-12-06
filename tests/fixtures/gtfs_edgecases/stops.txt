@@ -1,0 +1,4 @@
+stop_id,stop_name,stop_lat,stop_lon
+VALID1,Valid Stop,40.7128,-74.0060
+INVALID_LAT,Bad Latitude,91.0000,-74.0060
+INVALID_LON,Bad Longitude,40.7128,181.0000
