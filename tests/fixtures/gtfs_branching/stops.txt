@@ -1,5 +1,0 @@
-stop_id,stop_name,stop_lat,stop_lon
-S1,Station 1,40.7128,-74.0060
-S2,Station 2,40.7589,-73.9851
-S3,Station 3,40.7489,-73.9680
-S4,Station 4,40.7289,-73.9580

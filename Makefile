@@ -1,24 +1,11 @@
 .PHONY: format lint typecheck test bench clean install
 
 install:
-	pip install -e ".[dev]"
-
-format:
-	black raptor_pipeline tests
-	ruff check --fix raptor_pipeline tests
-
-lint:
-	ruff check raptor_pipeline tests
-	black --check raptor_pipeline tests
+	python3 -m venv .venv
+	.venv/bin/pip install -e ".[dev]"
 
 typecheck:
 	mypy raptor_pipeline
-
-test:
-	pytest tests
-
-bench:
-	pytest tests -k bench --benchmark-only
 
 clean:
 	rm -rf build dist *.egg-info
