@@ -1,4 +1,0 @@
-trip_id,stop_id,arrival_time,departure_time,stop_sequence
-T1,VALID1,08:00:00,08:00:00,3
-T1,VALID1,08:10:00,08:10:00,1
-T1,VALID1,08:05:00,08:05:00,2

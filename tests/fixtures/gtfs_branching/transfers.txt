@@ -1,2 +1,0 @@
-from_stop_id,to_stop_id,min_transfer_time
-S2,S2,60
