@@ -67,6 +67,7 @@ class RoutesWriter(BinaryWriter):
         route_offset = self.offset
 
         self.write_uint32(route.route_id_internal)
+        self.write_string(route.route_name)
         self.write_uint32(len(route.stop_ids))
         self.write_uint32(len(route.trips))
 
