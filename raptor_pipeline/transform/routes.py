@@ -54,9 +54,13 @@ def build_routes(reader: GTFSReader) -> list[RouteData]:
         # Convert to internal IDs
         canonical_stop_ids = [reader.get_internal_stop_id(stop_id) for stop_id in canonical_seq]
 
+        # Get route name (prefer short_name, fallback to long_name)
+        route_name = _get_route_name(reader, route_id)
+
         route_data = RouteData(
             route_id_internal=route_id_internal,
             route_id_gtfs=route_id,
+            route_name=route_name,
             stop_ids=canonical_stop_ids,
             trips=[],  # Filled later
         )
@@ -90,3 +94,13 @@ def _find_canonical_sequence(sequences: list[tuple[str, ...]], route_id: str) ->
         canonical = min(tied_sequences)
 
     return canonical
+
+
+def _get_route_name(reader: GTFSReader, route_id: str) -> str:
+    """Get route name from GTFS data, preferring short_name over long_name."""
+    for route in reader.routes:
+        if route.route_id == route_id:
+            if route.route_short_name:
+                return route.route_short_name
+            return route.route_long_name
+    return ""
