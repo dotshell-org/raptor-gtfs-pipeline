@@ -5,47 +5,26 @@ Convert GTFS datasets to compact binary formats optimized for RAPTOR routing alg
 ## Installation
 
 ```bash
-pip install .
-```
-
-For development:
-
-```bash
-pip install -e ".[dev]"
+make install
 ```
 
 ## Quick Start
 
-### Command Line
-
-Convert GTFS to binary format:
+Simply convert a GTFS dataset (ZIP file or directory) to binary format:
 
 ```bash
-raptor-gtfs convert --input /path/to/gtfs --output ./raptor_data
+make run GTFS=path/to/gtfs.zip
 ```
 
-Validate binary output:
+This will:
+- Extract the GTFS data if it's a ZIP file
+- Convert it to binary format
+- Generate optimized files in `./raptor_data/`
 
+Examples:
 ```bash
-raptor-gtfs validate --input ./raptor_data
-```
-
-### Python API
-
-```python
-from raptor_pipeline import convert, validate
-
-# Convert
-manifest = convert(
-    input_path="/path/to/gtfs",
-    output_path="./raptor_data"
-)
-
-print(f"Converted {manifest.stats['routes']} routes")
-
-# Validate
-report = validate(output_path="./raptor_data")
-assert report.valid
+make run GTFS=~/Downloads/GTFS_TCL.zip
+make run GTFS=./gtfs_directory/
 ```
 
 ## Binary Format Specification
@@ -150,37 +129,6 @@ Contains metadata, checksums, and statistics:
 }
 ```
 
-## CLI Options
-
-### Convert
-
-```bash
-raptor-gtfs convert [OPTIONS]
-
-Options:
-  --input PATH              GTFS directory (required)
-  --output PATH             Output directory (default: ./raptor_data)
-  --format CHOICE           Output format: binary, json, both (default: binary)
-  --compression BOOL        Enable delta encoding (default: true)
-  --debug-json BOOL         Generate debug JSON (default: false)
-  --gen-transfers BOOL      Generate walking transfers (default: false)
-  --allow-partial-trips     Allow trips with missing stops (default: false)
-  --speed-walk FLOAT        Walking speed in m/s (default: 1.33)
-  --transfer-cutoff INT     Max transfer distance in meters (default: 500)
-  --jobs INT                Parallel jobs (default: 1)
-  -v, --verbose             Verbose logging
-```
-
-### Validate
-
-```bash
-raptor-gtfs validate [OPTIONS]
-
-Options:
-  --input PATH              Output directory to validate (required)
-  -v, --verbose             Verbose logging
-```
-
 ## Development
 
 ### Setup
@@ -189,48 +137,10 @@ Options:
 make install
 ```
 
-### Testing
+### Advanced Usage (CLI)
+
+For advanced configuration, use the CLI directly:
 
 ```bash
-make test          # Run all tests
-make bench         # Run benchmarks
-make lint          # Check code style
-make typecheck     # Run mypy
-make format        # Format code
+python -m raptor_pipeline.cli convert --input /path/to/gtfs --output ./raptor_data
 ```
-
-### Code Quality
-
-- **Linting**: ruff (E, F, I, UP, ANN, RUF rules)
-- **Formatting**: black (line length 100)
-- **Type checking**: mypy strict mode
-- **Testing**: pytest with benchmarks
-
-## Performance
-
-Target: < 2s for typical GTFS feed (~100k stop_times) on modern hardware.
-
-Benchmarks on test fixtures (run `make bench`):
-- Minimal fixture (6 stop_times): < 0.1s
-- Branching fixture (5 stop_times): < 0.1s
-
-## Compatibility
-
-- Python >= 3.11
-- Schema version: 1 (current)
-- Binary format is platform-independent (little-endian)
-
-## Validation
-
-The validator checks:
-
-**Hard errors** (conversion fails):
-- Invalid coordinates (lat/lon out of bounds)
-- Unordered stop sequences
-- Missing required times
-- Orphaned references (trips → routes, stops)
-
-**Warnings** (conversion succeeds):
-- Non-increasing trip times
-- Extreme transfer times
-- Empty stop names
