@@ -1,4 +1,4 @@
-.PHONY: format lint typecheck test bench clean install run
+.PHONY: format lint typecheck test bench clean install run graph
 
 install:
 	python3 -m venv .venv
@@ -25,6 +25,14 @@ run:
 	else \
 		python -m raptor_pipeline.cli convert --input "$$GTFS_EXPANDED" --output ./raptor_data --format binary; \
 	fi
+
+graph:
+	@if [ -z "$(DATA)" ]; then \
+		echo "Error: DATA parameter required. Usage: make graph DATA=./raptor_data"; \
+		exit 1; \
+	fi
+	@DATA_EXPANDED=$$(eval echo "$(DATA)"); \
+	python -m raptor_pipeline.visualize --data "$$DATA_EXPANDED" --output network_map.html
 
 typecheck:
 	mypy raptor_pipeline
