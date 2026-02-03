@@ -1,6 +1,7 @@
 """Custom mode configurations for specific transit agencies."""
 
 import logging
+import re
 from datetime import datetime
 
 from raptor_pipeline.gtfs.models import ServicePeriod
@@ -17,17 +18,14 @@ def analyze_lyon_periods(reader: GTFSReader) -> list[ServicePeriod]:
     - saturday: Saturday service
     - sunday: Sunday service
     
-    School periods in France (approximate):
-    - Sept to Oct: school on
-    - Late Oct to early Nov: school off (Toussaint)
-    - Nov to Dec: school on
-    - Late Dec to early Jan: school off (Christmas)
-    - Jan to Feb: school on
-    - Feb: school off (Winter holidays)
-    - Mar to Apr: school on
-    - Apr: school off (Spring holidays)
-    - May to July: school on
-    - July-Aug: school off (Summer)
+    TCL service_id patterns:
+    - xxxx-xxxAM-xxxx = Weekday, School period (école)
+    - xxxx-xxxAV-xxxx = Weekday, Vacation period (vacances)
+    - xxxx-xxxAW-xxxx = Weekday, Winter/holiday period
+    - xxxx-xxxxM-xxxx = Weekend (usually school period)
+    - xxxx-xxxxT-xxxx = Weekend transitional/special
+    
+    JD lines (school-only routes) are identified by route_short_name starting with "JD"
     """
     if not reader.calendar:
         logger.warning("No calendar data found for Lyon mode")
@@ -35,64 +33,82 @@ def analyze_lyon_periods(reader: GTFSReader) -> list[ServicePeriod]:
     
     logger.info("Analyzing Lyon TCL periods (school_on/school_off/saturday/sunday)")
     
-    # Define school holiday periods for 2025-2026
-    school_holidays = [
-        ("20251024", "20251103"),  # Toussaint
-        ("20251220", "20260104"),  # Christmas/New Year
-        ("20260220", "20260308"),  # Winter (approx)
-        ("20260410", "20260426"),  # Spring (approx)
-        ("20260704", "20260831"),  # Summer
-    ]
+    # Get all JD route IDs (school-only routes)
+    jd_routes = set()
+    for route in reader.routes:
+        route_short_name = route.route_short_name
+        if route_short_name and (route_short_name.startswith('JD') or '-JD' in route_short_name):
+            jd_routes.add(route.route_id)
     
-    def is_school_holiday(start_date: str, end_date: str) -> bool:
-        """Check if a service period overlaps with school holidays."""
-        for holiday_start, holiday_end in school_holidays:
-            # Check overlap
-            if not (end_date < holiday_start or start_date > holiday_end):
-                return True
-        return False
+    logger.info(f"Identified {len(jd_routes)} JD (school-only) routes")
+    
+    # Map service_id to route for JD detection
+    service_to_routes = {}
+    for trip in reader.trips:
+        if trip.service_id not in service_to_routes:
+            service_to_routes[trip.service_id] = set()
+        service_to_routes[trip.service_id].add(trip.route_id)
     
     # Categorize services
-    school_on_weekdays = []
-    school_off_weekdays = []
-    saturdays = []
-    sundays = []
+    school_on_weekdays = set()
+    school_off_weekdays = set()
+    saturdays = set()
+    sundays = set()
+    
+    # Patterns for TCL service_id
+    school_weekday_pattern = re.compile(r'-\d{3}[AB]?M-')  # e.g., -042AM-, -065AM-, -085BM-
+    vacation_weekday_pattern = re.compile(r'-\d{3}A[VW]-')  # e.g., -042AV-, -006AW-
     
     for cal in reader.calendar:
-        # Weekday pattern (M-F)
-        if cal.monday and cal.tuesday and cal.wednesday and cal.thursday and cal.friday and not cal.saturday and not cal.sunday:
-            if is_school_holiday(cal.start_date, cal.end_date):
-                school_off_weekdays.append(cal.service_id)
+        service_id = cal.service_id
+        
+        # Check if this service is for JD routes
+        routes_for_service = service_to_routes.get(service_id, set())
+        is_jd_only = routes_for_service and routes_for_service.issubset(jd_routes)
+        
+        has_weekday = (cal.monday or cal.tuesday or cal.wednesday or cal.thursday or cal.friday)
+        has_saturday = cal.saturday
+        has_sunday = cal.sunday
+        
+        # Determine if this is a school or vacation service based on service_id pattern
+        is_school_service = bool(school_weekday_pattern.search(service_id))
+        is_vacation_service = bool(vacation_weekday_pattern.search(service_id))
+        
+        # If no pattern matched, try to determine from date ranges
+        if has_weekday and not is_school_service and not is_vacation_service:
+            # Fallback: check if dates fall in typical vacation periods
+            # Dec 20 - Jan 5 = Winter vacation, July-Aug = Summer vacation
+            # Feb vacation week, Spring vacation (2 weeks in April)
+            start_date = str(cal.start_date) if hasattr(cal, 'start_date') else ""
+            if start_date:
+                month = int(start_date[4:6]) if len(start_date) >= 6 else 0
+                # Summer vacation (July-August) or December dates = likely vacation
+                if month in (7, 8) or (month == 12 and int(start_date[6:8]) > 20):
+                    is_vacation_service = True
+                else:
+                    is_school_service = True
+        
+        # Categorize weekday services
+        if has_weekday:
+            if is_jd_only:
+                # JD routes ONLY go in school_on
+                school_on_weekdays.add(service_id)
+            elif is_vacation_service:
+                # Vacation-only service
+                school_off_weekdays.add(service_id)
+            elif is_school_service:
+                # School-only service
+                school_on_weekdays.add(service_id)
             else:
-                school_on_weekdays.append(cal.service_id)
+                # Unknown pattern - put in both (safest fallback)
+                school_on_weekdays.add(service_id)
+                school_off_weekdays.add(service_id)
         
-        # Saturday only
-        elif cal.saturday and not cal.sunday and not (cal.monday or cal.tuesday or cal.wednesday or cal.thursday or cal.friday):
-            saturdays.append(cal.service_id)
-        
-        # Sunday only
-        elif cal.sunday and not cal.saturday and not (cal.monday or cal.tuesday or cal.wednesday or cal.thursday or cal.friday):
-            sundays.append(cal.service_id)
-        
-        # Custom patterns with weekdays - check if mostly weekdays
-        elif (cal.monday or cal.tuesday or cal.wednesday or cal.thursday or cal.friday):
-            if not (cal.saturday or cal.sunday):
-                # It's a weekday service (might be partial week)
-                if is_school_holiday(cal.start_date, cal.end_date):
-                    school_off_weekdays.append(cal.service_id)
-                else:
-                    school_on_weekdays.append(cal.service_id)
-            elif cal.saturday and not cal.sunday:
-                # Weekdays + Saturday, consider as school_on weekday
-                if is_school_holiday(cal.start_date, cal.end_date):
-                    school_off_weekdays.append(cal.service_id)
-                else:
-                    school_on_weekdays.append(cal.service_id)
-        
-        # Saturday + Sunday (weekend pattern)
-        elif cal.saturday and cal.sunday:
-            saturdays.append(cal.service_id)
-            sundays.append(cal.service_id)
+        # Weekend services
+        if has_saturday:
+            saturdays.add(service_id)
+        if has_sunday:
+            sundays.add(service_id)
     
     periods = []
     
@@ -100,7 +116,7 @@ def analyze_lyon_periods(reader: GTFSReader) -> list[ServicePeriod]:
         periods.append(
             ServicePeriod(
                 name="school_on_weekdays",
-                service_ids=school_on_weekdays,
+                service_ids=list(school_on_weekdays),
                 description="Weekdays during school periods",
             )
         )
@@ -109,7 +125,7 @@ def analyze_lyon_periods(reader: GTFSReader) -> list[ServicePeriod]:
         periods.append(
             ServicePeriod(
                 name="school_off_weekdays",
-                service_ids=school_off_weekdays,
+                service_ids=list(school_off_weekdays),
                 description="Weekdays during school holidays",
             )
         )
