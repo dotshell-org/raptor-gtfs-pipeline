@@ -4,7 +4,7 @@ import csv
 import logging
 from pathlib import Path
 
-from raptor_pipeline.gtfs.models import Agency, Route, Stop, StopTime, Transfer, Trip
+from raptor_pipeline.gtfs.models import Agency, Calendar, CalendarDate, Route, Stop, StopTime, Transfer, Trip
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +35,8 @@ class GTFSReader:
         self.stop_times: list[StopTime] = []
         self.transfers: list[Transfer] = []
         self.agencies: list[Agency] = []
+        self.calendar: list[Calendar] = []
+        self.calendar_dates: list[CalendarDate] = []
 
     def read_all(self) -> None:
         """Read all GTFS files."""
@@ -42,13 +44,16 @@ class GTFSReader:
         self.read_agencies()
         self.read_stops()
         self.read_routes()
+        self.read_calendar()
+        self.read_calendar_dates()
         self.read_trips()
         self.read_stop_times()
         self.read_transfers()
         logger.info(
             f"Loaded {len(self.stops)} stops, {len(self.routes)} routes, "
             f"{len(self.trips)} trips, {len(self.stop_times)} stop_times, "
-            f"{len(self.transfers)} transfers"
+            f"{len(self.transfers)} transfers, {len(self.calendar)} calendar entries, "
+            f"{len(self.calendar_dates)} calendar date exceptions"
         )
 
     def read_agencies(self) -> None:
@@ -70,6 +75,47 @@ class GTFSReader:
                     agency_timezone=row["agency_timezone"],
                 )
                 self.agencies.append(agency)
+
+    def read_calendar(self) -> None:
+        """Read calendar.txt."""
+        file_path = self.gtfs_path / "calendar.txt"
+        if not file_path.exists():
+            logger.info("calendar.txt not found, skipping")
+            return
+
+        with open(file_path, encoding="utf-8-sig") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                calendar = Calendar(
+                    service_id=row["service_id"],
+                    monday=row["monday"] == "1",
+                    tuesday=row["tuesday"] == "1",
+                    wednesday=row["wednesday"] == "1",
+                    thursday=row["thursday"] == "1",
+                    friday=row["friday"] == "1",
+                    saturday=row["saturday"] == "1",
+                    sunday=row["sunday"] == "1",
+                    start_date=row["start_date"],
+                    end_date=row["end_date"],
+                )
+                self.calendar.append(calendar)
+
+    def read_calendar_dates(self) -> None:
+        """Read calendar_dates.txt."""
+        file_path = self.gtfs_path / "calendar_dates.txt"
+        if not file_path.exists():
+            logger.info("calendar_dates.txt not found, skipping")
+            return
+
+        with open(file_path, encoding="utf-8-sig") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                calendar_date = CalendarDate(
+                    service_id=row["service_id"],
+                    date=row["date"],
+                    exception_type=int(row["exception_type"]),
+                )
+                self.calendar_dates.append(calendar_date)
 
     def read_stops(self) -> None:
         """Read stops.txt and create internal ID mapping."""
