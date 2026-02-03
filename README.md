@@ -27,6 +27,43 @@ make run GTFS=~/Downloads/GTFS_TCL.zip
 make run GTFS=./gtfs_directory/
 ```
 
+## Service Period Splitting
+
+The pipeline can automatically split the output into multiple folders based on service periods (e.g., weekday, saturday, sunday, school holidays). This is useful for reducing the size of routing data when you only need to route for a specific day type.
+
+### Usage
+
+Use the `--split-by-periods` flag:
+
+```bash
+python -m raptor_pipeline.cli convert --input /path/to/gtfs --output ./raptor_data --split-by-periods true
+```
+
+This will create separate folders:
+- `raptor_data/weekday/` - Monday to Friday schedules
+- `raptor_data/saturday/` - Saturday schedules  
+- `raptor_data/sunday/` - Sunday and holiday schedules
+- `raptor_data/weekend/` - Weekend schedules (if applicable)
+- `raptor_data/daily/` - Daily schedules (if applicable)
+- `raptor_data/custom_N/` - Custom patterns (if applicable)
+
+Each folder contains its own set of binary files (routes.bin, stops.bin, index.bin, manifest.json) with only the trips that operate during that service period.
+
+### How it works
+
+The pipeline:
+1. Reads `calendar.txt` and `calendar_dates.txt` from your GTFS feed
+2. Groups services by their day-of-week patterns (Monday-Friday, Saturday, Sunday, etc.)
+3. Filters trips based on their `service_id`
+4. Generates separate binary outputs for each period
+
+### Benefits
+
+- **Smaller files**: Each period only contains relevant trips
+- **Faster routing**: Less data to load and process
+- **Clear separation**: Easy to select the right data for a given day
+- **Flexible**: Automatically adapts to your GTFS calendar structure
+
 ## Binary Format Specification
 
 ### routes.bin

@@ -34,6 +34,8 @@ def cmd_convert(args: argparse.Namespace) -> int:
         speed_walk=args.speed_walk,
         transfer_cutoff=args.transfer_cutoff,
         jobs=args.jobs,
+        split_by_periods=args.split_by_periods,
+        mode=args.mode,
     )
 
     try:
@@ -137,6 +139,19 @@ def main() -> None:
         type=int,
         default=1,
         help="Number of parallel jobs (default: 1)",
+    )
+    convert_parser.add_argument(
+        "--split-by-periods",
+        type=lambda x: x.lower() == "true",
+        default=False,
+        help="Generate separate folders per service period (weekday/saturday/sunday) (default: false)",
+    )
+    convert_parser.add_argument(
+        "--mode",
+        type=str,
+        default="auto",
+        choices=["auto", "lyon"],
+        help="Period detection mode: auto (default), lyon (school_on/school_off/sat/sun)",
     )
     convert_parser.set_defaults(func=cmd_convert)
 

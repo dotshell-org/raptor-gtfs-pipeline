@@ -63,6 +63,40 @@ class Agency:
     agency_timezone: str
 
 
+@dataclass(frozen=True)
+class Calendar:
+    """GTFS calendar entry."""
+
+    service_id: str
+    monday: bool
+    tuesday: bool
+    wednesday: bool
+    thursday: bool
+    friday: bool
+    saturday: bool
+    sunday: bool
+    start_date: str  # YYYYMMDD
+    end_date: str  # YYYYMMDD
+
+
+@dataclass(frozen=True)
+class CalendarDate:
+    """GTFS calendar_dates exception."""
+
+    service_id: str
+    date: str  # YYYYMMDD
+    exception_type: int  # 1=added, 2=removed
+
+
+@dataclass
+class ServicePeriod:
+    """A group of services representing a schedule period."""
+
+    name: str
+    service_ids: list[str] = field(default_factory=list)
+    description: str = ""
+
+
 @dataclass
 class StopData:
     """Internal stop representation with route references and transfers."""
@@ -143,3 +177,5 @@ class ConvertConfig:
     speed_walk: float = 1.33  # m/s
     transfer_cutoff: int = 500  # meters
     jobs: int = 1
+    split_by_periods: bool = False  # Generate separate folders per service period
+    mode: str = "auto"  # Period detection mode: auto, lyon

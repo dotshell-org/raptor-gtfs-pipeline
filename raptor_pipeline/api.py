@@ -7,6 +7,8 @@ import platform
 from datetime import UTC, datetime
 from pathlib import Path
 
+from raptor_pipeline.gtfs.calendar import analyze_service_periods, get_trips_for_period
+from raptor_pipeline.gtfs.modes import get_mode_analyzer
 from raptor_pipeline.gtfs.models import ConvertConfig, Manifest, ValidationReport
 from raptor_pipeline.gtfs.reader import GTFSReader
 from raptor_pipeline.gtfs.validator import GTFSValidator
@@ -54,9 +56,106 @@ def convert(
     if not validation_report.valid:
         raise ValueError(f"GTFS validation failed with {len(validation_report.errors)} errors")
 
-    # Transform
+    # Check if we should split by service periods
+    if config.split_by_periods:
+        # Use mode-specific analyzer if specified
+        mode_analyzer = get_mode_analyzer(config.mode)
+        if mode_analyzer:
+            logger.info(f"Using {config.mode} mode for period analysis")
+            periods = mode_analyzer(reader)
+        else:
+            periods = analyze_service_periods(reader)
+        
+        if not periods:
+            logger.warning("split_by_periods enabled but no calendar data found, generating single output")
+            periods = None
+    else:
+        periods = None
+    
+    # Build routes and trips ONCE (optimization for period splitting)
+    logger.info("Building routes and trips from GTFS data...")
     routes = build_routes(reader)
     build_and_sort_trips(reader, routes, allow_partial=config.allow_partial_trips)
+    logger.info(f"Built {len(routes)} routes with {sum(len(r.trips) for r in routes)} trips total")
+    
+    # If splitting by periods, generate one folder per period
+    if periods:
+        manifests = []
+        base_output = Path(output_path)
+        
+        for period in periods:
+            logger.info(f"\n{'=' * 60}")
+            logger.info(f"Processing period: {period.name}")
+            logger.info(f"Description: {period.description}")
+            logger.info(f"Services: {len(period.service_ids)}")
+            logger.info(f"{'=' * 60}\n")
+            
+            # Filter trips for this period
+            period_trip_ids = get_trips_for_period(reader, period)
+            logger.info(f"Found {len(period_trip_ids)} trips for period {period.name}")
+            
+            # Filter routes (reuse pre-built routes)
+            filtered_routes = _filter_routes_by_trips(routes, period_trip_ids)
+            logger.info(f"After filtering: {len(filtered_routes)} routes with trips in this period")
+            
+            # Generate output for this period
+            manifest = _write_period_output(
+                reader=reader,
+                routes=filtered_routes,
+                output_path=base_output / period.name,
+                config=config,
+                start_time=start_time,
+                input_path=input_path,
+                period_name=period.name,
+            )
+            manifests.append(manifest)
+        
+        # Return summary manifest
+        logger.info(f"\n{'=' * 60}")
+        logger.info(f"Generated {len(manifests)} period folders:")
+        for period in periods:
+            logger.info(f"  - {period.name}: {period.description}")
+        logger.info(f"{'=' * 60}\n")
+        
+        return manifests[0]  # Return first manifest for backward compatibility
+    else:
+        # Single output (original behavior)
+        return _write_period_output(
+            reader=reader,
+            routes=routes,
+            output_path=Path(output_path),
+            config=config,
+            start_time=start_time,
+            input_path=input_path,
+            period_name=None,
+        )
+
+
+def _write_period_output(
+    reader: GTFSReader,
+    routes: list,
+    output_path: Path,
+    config: ConvertConfig,
+    start_time: datetime,
+    input_path: str,
+    period_name: str | None,
+) -> Manifest:
+    """
+    Write output files for a specific period (or all data).
+    
+    Args:
+        reader: GTFSReader with loaded data
+        routes: Pre-built and filtered RouteData list
+        output_path: Output directory path
+        config: Conversion configuration
+        start_time: Conversion start time
+        input_path: Original GTFS input path
+        period_name: Name of the period, or None
+    
+    Returns:
+        Manifest with build metadata
+    """
+    # Build stops from the filtered routes
     stops = build_stops(reader, routes)
     build_transfers(
         reader,
@@ -70,7 +169,7 @@ def convert(
     index = build_network_index(routes, stops)
 
     # Write outputs
-    output_dir = Path(output_path)
+    output_dir = output_path
     files_written: dict[str, str] = {}
 
     if config.format in ("binary", "both"):
@@ -97,12 +196,16 @@ def convert(
         "stop_times": sum(len(route.stop_ids) * len(route.trips) for route in routes),
         "transfers": sum(len(stop.transfers) for stop in stops),
     }
+    
+    manifest_inputs = {"gtfs_path": input_path}
+    if period_name:
+        manifest_inputs["period"] = period_name
 
     manifest = Manifest(
         schema_version=SCHEMA_VERSION,
         tool_version=VERSION,
         created_at_iso=start_time.isoformat(),
-        inputs={"gtfs_path": input_path},
+        inputs=manifest_inputs,
         outputs=checksums,
         stats=stats,
         build={
@@ -130,11 +233,45 @@ def convert(
         )
 
     logger.info(f"Wrote manifest to {manifest_path}")
-
-    elapsed = (datetime.now(UTC) - start_time).total_seconds()
-    logger.info(f"Conversion completed in {elapsed:.2f}s")
+    
+    if period_name:
+        logger.info(f"Period '{period_name}' completed")
+    else:
+        elapsed = (datetime.now(UTC) - start_time).total_seconds()
+        logger.info(f"Conversion completed in {elapsed:.2f}s")
 
     return manifest
+
+
+def _filter_routes_by_trips(routes: list, period_trip_ids: set[str]) -> list:
+    """
+    Filter routes to only include trips that belong to the specified period.
+    
+    Args:
+        routes: List of RouteData objects
+        period_trip_ids: Set of trip IDs to include
+    
+    Returns:
+        Filtered list of RouteData objects with only matching trips
+    """
+    filtered_routes = []
+    
+    for route in routes:
+        # Filter trips for this route
+        filtered_trips = [
+            trip for trip in route.trips
+            if trip.trip_id_gtfs in period_trip_ids
+        ]
+        
+        # Only include route if it has trips in this period
+        if filtered_trips:
+            # Create a copy of the route with filtered trips
+            from copy import copy
+            filtered_route = copy(route)
+            filtered_route.trips = filtered_trips
+            filtered_routes.append(filtered_route)
+    
+    return filtered_routes
 
 
 def validate(output_path: str) -> ValidationReport:
