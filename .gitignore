@@ -48,6 +48,7 @@ dmypy.json
 raptor_data/
 *.bin
 *.json
+*.html
 
 # OS
 .DS_Store
