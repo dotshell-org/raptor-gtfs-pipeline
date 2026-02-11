@@ -27,7 +27,7 @@ def read_stops(stops_path: Path) -> list[dict]:
     stops = []
     with open(stops_path, "rb") as f:
         magic = f.read(4)
-        if magic != b"RSTS":
+        if magic != b"RST2":
             raise ValueError(f"Invalid stops.bin magic: {magic}")
         
         schema_version = read_uint16(f)
@@ -68,7 +68,7 @@ def read_routes(routes_path: Path) -> list[dict]:
     routes = []
     with open(routes_path, "rb") as f:
         magic = f.read(4)
-        if magic != b"RRTS":
+        if magic != b"RRT2":
             raise ValueError(f"Invalid routes.bin magic: {magic}")
         
         schema_version = read_uint16(f)
@@ -82,12 +82,11 @@ def read_routes(routes_path: Path) -> list[dict]:
             
             stop_ids = [read_uint32(f) for _ in range(stop_count)]
             
-            # Skip trip data (we only need stop sequences for the graph)
+            # Skip trip data (v2: tripIds block then flatStopTimes block)
             for _ in range(trip_count):
-                _trip_id = read_uint32(f)
-                # Read arrival times (delta-encoded int32)
-                for _ in range(stop_count):
-                    struct.unpack("<i", f.read(4))[0]
+                read_uint32(f)  # trip_id
+            for _ in range(trip_count * stop_count):
+                struct.unpack("<i", f.read(4))[0]  # stop times
             
             routes.append({
                 "id": route_id,

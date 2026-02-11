@@ -66,31 +66,34 @@ The pipeline:
 
 ## Binary Format Specification
 
-### routes.bin
+### routes.bin (v2)
 
 ```
 Header:
-  magic: b"RRTS" (4 bytes)
-  schema_version: uint16
+  magic: b"RRT2" (4 bytes)
+  schema_version: uint16 (= 2)
   route_count: uint32
 
 For each route:
   route_id: uint32
+  name_length: uint16
+  name: UTF-8 bytes
   stop_count: uint32
   trip_count: uint32
   stop_ids: stop_count × uint32
-  trips:
-    For each trip:
-      trip_id: uint32
-      arrival_times: stop_count × int32 (delta-encoded)
+  trip_ids: trip_count × uint32
+  flat_stop_times: (trip_count × stop_count) × int32 (delta-encoded, row-major)
+
+Trips are pre-sorted by departure time at first stop (ascending).
+Delta encoding: per trip row, first value is absolute, subsequent values are deltas.
 ```
 
-### stops.bin
+### stops.bin (v2)
 
 ```
 Header:
-  magic: b"RSTS" (4 bytes)
-  schema_version: uint16
+  magic: b"RST2" (4 bytes)
+  schema_version: uint16 (= 2)
   stop_count: uint32
 
 For each stop:
@@ -143,7 +146,7 @@ Contains metadata, checksums, and statistics:
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "tool_version": "0.1.0",
   "created_at": "2024-12-06T...",
   "inputs": {"gtfs_path": "..."},

@@ -54,7 +54,7 @@ class BinaryWriter:
 class RoutesWriter(BinaryWriter):
     """Writer for routes.bin."""
 
-    MAGIC = b"RRTS"
+    MAGIC = b"RRT2"
 
     def write_header(self, schema_version: int, route_count: int) -> None:
         """Write routes.bin header."""
@@ -63,7 +63,7 @@ class RoutesWriter(BinaryWriter):
         self.write_uint32(route_count)
 
     def write_route(self, route: RouteData, compression: bool = True) -> int:
-        """Write a single route and return its offset."""
+        """Write a single route and return its offset (v2 layout)."""
         route_offset = self.offset
 
         self.write_uint32(route.route_id_internal)
@@ -75,18 +75,18 @@ class RoutesWriter(BinaryWriter):
         for stop_id in route.stop_ids:
             self.write_uint32(stop_id)
 
-        # Write trips
+        # Write all trip IDs as a block
         for trip in route.trips:
             self.write_uint32(trip.trip_id_internal)
 
-            # Encode times
+        # Write all stop times as a flat block (row-major, pre-sorted)
+        for trip in route.trips:
             times = [t for t in trip.arrival_times if t != float("inf")]
             if compression:
                 encoded_times = encode_times(times)
             else:
                 encoded_times = times
 
-            # Write encoded times
             for time in encoded_times:
                 self.write_int32(time)
 
@@ -96,7 +96,7 @@ class RoutesWriter(BinaryWriter):
 class StopsWriter(BinaryWriter):
     """Writer for stops.bin."""
 
-    MAGIC = b"RSTS"
+    MAGIC = b"RST2"
 
     def write_header(self, schema_version: int, stop_count: int) -> None:
         """Write stops.bin header."""
@@ -273,7 +273,7 @@ def validate_binary_files(output_path: Path) -> dict[str, int]:
     with open(routes_path, "rb") as f:
         reader = BinaryReader(f)
         magic = reader.read_bytes(4)
-        if magic != b"RRTS":
+        if magic != b"RRT2":
             raise ValueError(f"Invalid routes.bin magic: {magic!r}")
         schema_version = reader.read_uint16()
         route_count = reader.read_uint32()
@@ -285,7 +285,7 @@ def validate_binary_files(output_path: Path) -> dict[str, int]:
     with open(stops_path, "rb") as f:
         reader = BinaryReader(f)
         magic = reader.read_bytes(4)
-        if magic != b"RSTS":
+        if magic != b"RST2":
             raise ValueError(f"Invalid stops.bin magic: {magic!r}")
         schema_version = reader.read_uint16()
         stop_count = reader.read_uint32()

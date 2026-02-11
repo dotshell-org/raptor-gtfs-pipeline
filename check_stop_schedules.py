@@ -42,7 +42,7 @@ def read_stops(stops_path):
     stops = {}
     with open(stops_path, "rb") as f:
         magic = f.read(4)
-        if magic != b"RSTS":
+        if magic != b"RST2":
             raise ValueError(f"Invalid stops.bin magic: {magic}")
         
         schema_version = read_uint16(f)
@@ -80,25 +80,26 @@ def read_routes(routes_path):
     routes = []
     with open(routes_path, "rb") as f:
         magic = f.read(4)
-        if magic != b"RRTS":
+        if magic != b"RRT2":
             raise ValueError(f"Invalid routes.bin magic: {magic}")
-        
+
         schema_version = read_uint16(f)
         route_count = read_uint32(f)
-        
+
         for route_idx in range(route_count):
             route_id = read_uint32(f)
             route_name = read_string(f)
             stop_count = read_uint32(f)
             trip_count = read_uint32(f)
-            
+
             stop_ids = [read_uint32(f) for _ in range(stop_count)]
-            
+
+            # v2: read all trip IDs as a block
+            trip_ids = [read_uint32(f) for _ in range(trip_count)]
+
+            # v2: read all stop times as a flat block (row-major)
             trips = []
-            for _ in range(trip_count):
-                trip_id = read_uint32(f)
-                
-                # Read arrival times (delta-encoded)
+            for i in range(trip_count):
                 times = []
                 cumulative = 0
                 for _ in range(stop_count):
@@ -108,9 +109,9 @@ def read_routes(routes_path):
                     else:
                         cumulative += delta
                     times.append(cumulative)
-                
+
                 trips.append({
-                    "trip_id": trip_id,
+                    "trip_id": trip_ids[i],
                     "times": times,
                 })
             
