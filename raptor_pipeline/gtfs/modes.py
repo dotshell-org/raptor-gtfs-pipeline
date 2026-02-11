@@ -18,13 +18,17 @@ def analyze_lyon_periods(reader: GTFSReader) -> list[ServicePeriod]:
     - saturday: Saturday service
     - sunday: Sunday service
     
-    TCL service_id patterns:
-    - xxxx-xxxAM-xxxx = Weekday, School period (école)
-    - xxxx-xxxAV-xxxx = Weekday, Vacation period (vacances)
-    - xxxx-xxxAW-xxxx = Weekday, Winter/holiday period
-    - xxxx-xxxxM-xxxx = Weekend (usually school period)
-    - xxxx-xxxxT-xxxx = Weekend transitional/special
-    
+    TCL service_id patterns (dash-separated: PREFIX-SEGMENT-PREFIX):
+    The last character of the middle segment determines the period type:
+    - ...M-... = School period (école)         e.g., -042AM-, -080CM-, -0805M-
+    - ...V-... = Vacation period (vacances)    e.g., -042AV-, -080CV-, -0805V-
+    - ...W-... = Winter/holiday period         e.g., -006AW-, -040AW-
+    - ...N-... = Transitional/night service
+    - ...P-... = Special period
+
+    The middle segment varies in length (3-4 alphanumeric chars + optional letter + type).
+    Some services use "chouette:TimeTable:..." UUIDs with no dash pattern (typically metro).
+
     JD lines (school-only routes) are identified by route_short_name starting with "JD"
     """
     if not reader.calendar:
@@ -55,60 +59,56 @@ def analyze_lyon_periods(reader: GTFSReader) -> list[ServicePeriod]:
     saturdays = set()
     sundays = set()
     
-    # Patterns for TCL service_id
-    school_weekday_pattern = re.compile(r'-\d{3}[AB]?M-')  # e.g., -042AM-, -065AM-, -085BM-
-    vacation_weekday_pattern = re.compile(r'-\d{3}A[VW]-')  # e.g., -042AV-, -006AW-
-    
+    # Patterns for TCL service_id (dash-separated format: PREFIX-SEGMENT-PREFIX)
+    # The last character of the middle segment is the type indicator.
+    # Middle segment: variable-length alphanumeric, e.g., 042A, 080C, 0805, 2027
+    school_weekday_pattern = re.compile(r'-[0-9A-Za-z]+M-')   # ends with M = school
+    vacation_weekday_pattern = re.compile(r'-[0-9A-Za-z]+[VW]-')  # ends with V/W = vacation
+
+    unmatched_weekday_services = []
+
     for cal in reader.calendar:
         service_id = cal.service_id
-        
+
         # Check if this service is for JD routes
         routes_for_service = service_to_routes.get(service_id, set())
         is_jd_only = routes_for_service and routes_for_service.issubset(jd_routes)
-        
+
         has_weekday = (cal.monday or cal.tuesday or cal.wednesday or cal.thursday or cal.friday)
         has_saturday = cal.saturday
         has_sunday = cal.sunday
-        
+
         # Determine if this is a school or vacation service based on service_id pattern
         is_school_service = bool(school_weekday_pattern.search(service_id))
         is_vacation_service = bool(vacation_weekday_pattern.search(service_id))
-        
-        # If no pattern matched, try to determine from date ranges
-        if has_weekday and not is_school_service and not is_vacation_service:
-            # Fallback: check if dates fall in typical vacation periods
-            # Dec 20 - Jan 5 = Winter vacation, July-Aug = Summer vacation
-            # Feb vacation week, Spring vacation (2 weeks in April)
-            start_date = str(cal.start_date) if hasattr(cal, 'start_date') else ""
-            if start_date:
-                month = int(start_date[4:6]) if len(start_date) >= 6 else 0
-                # Summer vacation (July-August) or December dates = likely vacation
-                if month in (7, 8) or (month == 12 and int(start_date[6:8]) > 20):
-                    is_vacation_service = True
-                else:
-                    is_school_service = True
-        
+
         # Categorize weekday services
         if has_weekday:
             if is_jd_only:
                 # JD routes ONLY go in school_on
                 school_on_weekdays.add(service_id)
             elif is_vacation_service:
-                # Vacation-only service
                 school_off_weekdays.add(service_id)
             elif is_school_service:
-                # School-only service
                 school_on_weekdays.add(service_id)
             else:
-                # Unknown pattern - put in both (safest fallback)
+                # No dash-pattern matched (chouette:... UUIDs, etc.)
+                # These services run regardless of school periods → include in BOTH
                 school_on_weekdays.add(service_id)
                 school_off_weekdays.add(service_id)
-        
+                unmatched_weekday_services.append(service_id)
+
         # Weekend services
         if has_saturday:
             saturdays.add(service_id)
         if has_sunday:
             sundays.add(service_id)
+
+    if unmatched_weekday_services:
+        logger.info(
+            f"  {len(unmatched_weekday_services)} weekday service(s) with no "
+            f"school/vacation pattern → included in both periods"
+        )
     
     periods = []
     
