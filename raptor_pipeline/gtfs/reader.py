@@ -110,10 +110,21 @@ class GTFSReader:
         with open(file_path, encoding="utf-8-sig") as f:
             reader = csv.DictReader(f)
             for row in reader:
+                # Handle empty or invalid exception_type
+                exception_type_str = row.get("exception_type", "").strip()
+                if not exception_type_str:
+                    logger.warning(f"Service {row['service_id']} on {row['date']} has empty exception_type, skipping")
+                    continue
+                try:
+                    exception_type = int(exception_type_str)
+                except ValueError:
+                    logger.warning(f"Service {row['service_id']} on {row['date']} has invalid exception_type '{exception_type_str}', skipping")
+                    continue
+                
                 calendar_date = CalendarDate(
                     service_id=row["service_id"],
                     date=row["date"],
-                    exception_type=int(row["exception_type"]),
+                    exception_type=exception_type,
                 )
                 self.calendar_dates.append(calendar_date)
 
@@ -129,8 +140,15 @@ class GTFSReader:
             for row in reader:
                 stop_id = row["stop_id"]
                 name = row.get("stop_name", "")
-                lat = float(row["stop_lat"])
-                lon = float(row["stop_lon"])
+                
+                # Handle empty or invalid coordinates
+                try:
+                    lat = float(row.get("stop_lat", "").strip())
+                    lon = float(row.get("stop_lon", "").strip())
+                except (ValueError, AttributeError):
+                    logger.warning(f"Stop {stop_id} has invalid coordinates, skipping")
+                    continue
+                
                 stop = Stop(stop_id=stop_id, name=name, lat=lat, lon=lon)
                 stops_raw.append((stop_id, stop))
 
@@ -154,11 +172,24 @@ class GTFSReader:
             reader = csv.DictReader(f)
             for row in reader:
                 route_id = row["route_id"]
+                
+                # Handle empty or invalid route_type
+                route_type_str = row.get("route_type", "").strip()
+                if not route_type_str:
+                    logger.warning(f"Route {route_id} has empty route_type, using default (3=bus)")
+                    route_type = 3  # Default to bus
+                else:
+                    try:
+                        route_type = int(route_type_str)
+                    except ValueError:
+                        logger.warning(f"Route {route_id} has invalid route_type '{route_type_str}', using default (3=bus)")
+                        route_type = 3
+                
                 route = Route(
                     route_id=route_id,
                     route_short_name=row.get("route_short_name", ""),
                     route_long_name=row.get("route_long_name", ""),
-                    route_type=int(row["route_type"]),
+                    route_type=route_type,
                 )
                 routes_raw.append((route_id, route))
 
@@ -182,7 +213,18 @@ class GTFSReader:
             reader = csv.DictReader(f)
             for row in reader:
                 trip_id = row["trip_id"]
-                direction_id = int(row.get("direction_id", "0"))
+                
+                # Handle empty or invalid direction_id
+                direction_id_str = row.get("direction_id", "0").strip()
+                if not direction_id_str:
+                    direction_id = 0
+                else:
+                    try:
+                        direction_id = int(direction_id_str)
+                    except ValueError:
+                        logger.warning(f"Trip {trip_id} has invalid direction_id '{direction_id_str}', using 0")
+                        direction_id = 0
+                
                 trip = Trip(
                     trip_id=trip_id,
                     route_id=row["route_id"],
@@ -212,9 +254,25 @@ class GTFSReader:
             for row in reader:
                 trip_id = row["trip_id"]
                 stop_id = row["stop_id"]
-                arrival_time = self._parse_time(row["arrival_time"])
-                departure_time = self._parse_time(row["departure_time"])
-                stop_sequence = int(row["stop_sequence"])
+                
+                # Parse times with error handling
+                try:
+                    arrival_time = self._parse_time(row.get("arrival_time", ""))
+                    departure_time = self._parse_time(row.get("departure_time", ""))
+                except ValueError as e:
+                    logger.warning(f"Trip {trip_id} stop {stop_id} has invalid times: {e}, skipping")
+                    continue
+                
+                # Handle empty or invalid stop_sequence
+                stop_sequence_str = row.get("stop_sequence", "").strip()
+                if not stop_sequence_str:
+                    logger.warning(f"Trip {trip_id} stop {stop_id} has empty stop_sequence, skipping")
+                    continue
+                try:
+                    stop_sequence = int(stop_sequence_str)
+                except ValueError:
+                    logger.warning(f"Trip {trip_id} stop {stop_id} has invalid stop_sequence '{stop_sequence_str}', skipping")
+                    continue
 
                 stop_time = StopTime(
                     trip_id=trip_id,
@@ -241,7 +299,17 @@ class GTFSReader:
             for row in reader:
                 from_stop = row["from_stop_id"]
                 to_stop = row["to_stop_id"]
-                min_time = int(row.get("min_transfer_time", "0"))
+                
+                # Handle empty or invalid min_transfer_time
+                min_time_str = row.get("min_transfer_time", "0").strip()
+                if not min_time_str:
+                    min_time = 0
+                else:
+                    try:
+                        min_time = int(min_time_str)
+                    except ValueError:
+                        logger.warning(f"Transfer {from_stop}->{to_stop} has invalid min_transfer_time '{min_time_str}', using 0")
+                        min_time = 0
 
                 transfer = Transfer(
                     from_stop_id=from_stop,
@@ -253,13 +321,20 @@ class GTFSReader:
     @staticmethod
     def _parse_time(time_str: str) -> int:
         """Parse HH:MM:SS to seconds since midnight, supporting >24h."""
-        parts = time_str.strip().split(":")
+        time_str = time_str.strip()
+        if not time_str:
+            raise ValueError("Empty time string")
+        
+        parts = time_str.split(":")
         if len(parts) != 3:
             raise ValueError(f"Invalid time format: {time_str}")
 
-        hours = int(parts[0])
-        minutes = int(parts[1])
-        seconds = int(parts[2])
+        try:
+            hours = int(parts[0])
+            minutes = int(parts[1])
+            seconds = int(parts[2])
+        except ValueError:
+            raise ValueError(f"Invalid time format: {time_str}")
 
         return hours * 3600 + minutes * 60 + seconds
 

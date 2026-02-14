@@ -125,7 +125,10 @@ def generate_html_map(stops: list[dict], routes: list[dict], output_path: Path) 
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <style>
         body {{ margin: 0; padding: 0; }}
         #map {{ position: absolute; top: 0; bottom: 0; width: 100%; }}
@@ -142,6 +145,13 @@ def generate_html_map(stops: list[dict], routes: list[dict], output_path: Path) 
         }}
         .info-panel h3 {{ margin: 0 0 10px 0; }}
         .stat {{ margin: 5px 0; }}
+        .zoom-info {{ 
+            margin-top: 10px; 
+            padding-top: 10px; 
+            border-top: 1px solid #ddd; 
+            font-size: 12px; 
+            color: #666; 
+        }}
     </style>
 </head>
 <body>
@@ -150,33 +160,81 @@ def generate_html_map(stops: list[dict], routes: list[dict], output_path: Path) 
         <h3>🚌 RAPTOR Network</h3>
         <div class="stat"><strong>Stops:</strong> {len(stops)}</div>
         <div class="stat"><strong>Routes:</strong> {len(routes)}</div>
+        <div class="zoom-info">
+            <div>Zoom: <span id="zoom-level">-</span></div>
+            <div>Visible: <span id="visible-elements">-</span></div>
+        </div>
     </div>
     <script>
-        var map = L.map('map').setView([{center_lat}, {center_lon}], 12);
+        // Use Canvas renderer for better performance with many elements
+        var map = L.map('map', {{
+            preferCanvas: true,
+            renderer: L.canvas()
+        }}).setView([{center_lat}, {center_lon}], 12);
         
         L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
             attribution: '© OpenStreetMap contributors'
         }}).addTo(map);
         
-        // Stops
-        var stops = {{}};
+        // Create custom panes for z-index control
+        map.createPane('routesPane');
+        map.getPane('routesPane').style.zIndex = 450;  // Above markers (400) but below popups (600)
+        
+        map.createPane('transfersPane');
+        map.getPane('transfersPane').style.zIndex = 440;
+        
+        // Data storage
+        var stopsData = [];
+        var routesData = [];
+        var transfersData = [];
+        
+        // Layer groups for conditional rendering
+        var routeLayer = L.layerGroup();
+        var transferLayer = L.layerGroup();
+        var stopClusterGroup = L.markerClusterGroup({{
+            chunkedLoading: true,
+            chunkInterval: 200,
+            chunkDelay: 50,
+            maxClusterRadius: 50,
+            spiderfyOnMaxZoom: true,
+            showCoverageOnHover: false,
+            zoomToBoundsOnClick: true
+        }});
 """
     
-    # Add stops as markers
+    # Add stops as markers with clustering
     for stop in stops:
         popup = f"{stop['name']} (ID: {stop['id']})"
         html += f"""
-        stops[{stop['id']}] = L.circleMarker([{stop['lat']}, {stop['lon']}], {{
-            radius: 5,
-            fillColor: '#3388ff',
-            color: '#fff',
-            weight: 1,
-            opacity: 1,
-            fillOpacity: 0.8
-        }}).bindPopup("{popup.replace('"', '\\"')}").addTo(map);
+        stopsData.push({{
+            id: {stop['id']},
+            lat: {stop['lat']},
+            lon: {stop['lon']},
+            name: "{popup.replace('"', '\\"')}"
+        }});
 """
     
-    # Add route lines
+    html += """
+        // Create stop markers with clustering
+        stopsData.forEach(function(stop) {
+            var marker = L.circleMarker([stop.lat, stop.lon], {
+                radius: 4,
+                fillColor: '#3388ff',
+                color: '#fff',
+                weight: 1,
+                opacity: 1,
+                fillOpacity: 0.7
+            }).bindPopup(stop.name);
+            stopClusterGroup.addLayer(marker);
+        });
+        
+        stopClusterGroup.addTo(map);
+"""
+    
+    # Add route lines with optimization
+    html += """
+        // Routes with zoom-based rendering
+"""
     for i, route in enumerate(routes):
         color = colors[i % len(colors)]
         coords = []
@@ -188,16 +246,16 @@ def generate_html_map(stops: list[dict], routes: list[dict], output_path: Path) 
         if len(coords) >= 2:
             route_name = route['name'].replace('"', '\\"').replace("'", "\\'")
             html += f"""
-        L.polyline([{', '.join(coords)}], {{
-            color: '{color}',
-            weight: 3,
-            opacity: 0.7
-        }}).bindPopup("{route_name}").addTo(map);
+        routesData.push({{
+            name: "{route_name}",
+            color: "{color}",
+            coords: [{', '.join(coords)}]
+        }});
 """
     
-    # Add transfer lines (dashed)
+    # Add transfer lines storage
     html += """
-        // Transfers (walking connections)
+        // Store transfers (walking connections)
 """
     for stop in stops:
         for target_id, walk_time in stop["transfers"]:
@@ -205,18 +263,85 @@ def generate_html_map(stops: list[dict], routes: list[dict], output_path: Path) 
                 target = stop_by_id[target_id]
                 minutes = walk_time // 60
                 html += f"""
-        L.polyline([[{stop['lat']}, {stop['lon']}], [{target['lat']}, {target['lon']}]], {{
-            color: '#888',
-            weight: 1,
-            opacity: 0.5,
-            dashArray: '5, 5'
-        }}).bindPopup("Walk: {minutes} min").addTo(map);
+        transfersData.push({{
+            from: [{stop['lat']}, {stop['lon']}],
+            to: [{target['lat']}, {target['lon']}],
+            minutes: {minutes}
+        }});
 """
     
     html += """
+        
+        // Render ALL routes at all zoom levels
+        function renderRoutes() {
+            routeLayer.clearLayers();
+            var zoom = map.getZoom();
+            
+            // Show ALL routes, adjust style based on zoom
+            routesData.forEach(function(route) {
+                L.polyline(route.coords, {
+                    color: route.color,
+                    weight: zoom < 10 ? 3 : (zoom < 12 ? 4 : (zoom < 14 ? 5 : 6)),
+                    opacity: zoom < 10 ? 0.6 : (zoom < 12 ? 0.7 : 0.85),
+                    pane: 'routesPane',
+                    lineCap: 'round',
+                    lineJoin: 'round'
+                }).bindPopup(route.name).addTo(routeLayer);
+            });
+        }
+        
+        // Render ALL transfers at high zoom
+        function renderTransfers() {
+            transferLayer.clearLayers();
+            var zoom = map.getZoom();
+            
+            // Only show transfers at zoom level 13 or higher to avoid clutter
+            if (zoom >= 13) {
+                transfersData.forEach(function(transfer) {
+                    L.polyline([transfer.from, transfer.to], {
+                        color: '#888',
+                        weight: 2,
+                        opacity: 0.6,
+                        dashArray: '5, 5',
+                        pane: 'transfersPane'
+                    }).bindPopup("Walk: " + transfer.minutes + " min").addTo(transferLayer);
+                });
+            }
+        }
+        
+        // Update visibility info
+        function updateInfo() {
+            var zoom = map.getZoom();
+            document.getElementById('zoom-level').textContent = zoom;
+            
+            var visible = ['routes'];
+            if (zoom >= 13) visible.push('transfers');
+            visible.push('stops (clustered)');
+            
+            document.getElementById('visible-elements').textContent = visible.join(', ');
+        }
+        
+        // Add layers to map
+        routeLayer.addTo(map);
+        transferLayer.addTo(map);
+        
+        // Initial render
+        renderRoutes();
+        renderTransfers();
+        updateInfo();
+        
+        // Update on zoom change
+        map.on('zoomend', function() {
+            renderRoutes();
+            renderTransfers();
+            updateInfo();
+        });
+        
         // Fit bounds to all stops
-        var group = new L.featureGroup(Object.values(stops));
-        map.fitBounds(group.getBounds().pad(0.1));
+        if (stopsData.length > 0) {
+            var bounds = L.latLngBounds(stopsData.map(s => [s.lat, s.lon]));
+            map.fitBounds(bounds.pad(0.1));
+        }
     </script>
 </body>
 </html>
