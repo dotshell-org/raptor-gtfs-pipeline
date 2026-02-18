@@ -66,6 +66,7 @@ def analyze_lyon_periods(reader: GTFSReader) -> list[ServicePeriod]:
     vacation_weekday_pattern = re.compile(r'-[0-9A-Za-z]+[VW]-')  # ends with V/W = vacation
 
     unmatched_weekday_services = []
+    all_week_services = []
 
     for cal in reader.calendar:
         service_id = cal.service_id
@@ -78,6 +79,11 @@ def analyze_lyon_periods(reader: GTFSReader) -> list[ServicePeriod]:
         has_saturday = cal.saturday
         has_sunday = cal.sunday
 
+        # Services running all 7 days are considered "all-week" services (e.g., Rhônexpress)
+        # These should be included in BOTH school_on and school_off weekday periods
+        is_all_week = (cal.monday and cal.tuesday and cal.wednesday and
+                       cal.thursday and cal.friday and cal.saturday and cal.sunday)
+
         # Determine if this is a school or vacation service based on service_id pattern
         is_school_service = bool(school_weekday_pattern.search(service_id))
         is_vacation_service = bool(vacation_weekday_pattern.search(service_id))
@@ -87,6 +93,12 @@ def analyze_lyon_periods(reader: GTFSReader) -> list[ServicePeriod]:
             if is_jd_only:
                 # JD routes ONLY go in school_on
                 school_on_weekdays.add(service_id)
+            elif is_all_week:
+                # All-week services (like Rhônexpress RX) run every day regardless of
+                # school periods → include in BOTH school_on and school_off
+                school_on_weekdays.add(service_id)
+                school_off_weekdays.add(service_id)
+                all_week_services.append(service_id)
             elif is_vacation_service:
                 school_off_weekdays.add(service_id)
             elif is_school_service:
@@ -110,6 +122,12 @@ def analyze_lyon_periods(reader: GTFSReader) -> list[ServicePeriod]:
             f"school/vacation pattern → included in both periods"
         )
     
+    if all_week_services:
+        logger.info(
+            f"  {len(all_week_services)} all-week service(s) (Mon-Sun) "
+            f"→ included in both school_on and school_off periods"
+        )
+
     periods = []
     
     if school_on_weekdays:
