@@ -10,7 +10,7 @@ run:
 		exit 1; \
 	fi
 	@GTFS_EXPANDED=$$(eval echo "$(GTFS)"); \
-	if [ -f "$$GTFS_EXPANDED" ] && echo "$$GTFS_EXPANDED" | grep -q '\.zip$$'; then \
+	if [ -f "$$GTFS_EXPANDED" ] && echo "$$GTFS_EXPANDED" | grep -qi '\.zip$$'; then \
 		echo "Extracting GTFS ZIP file: $$GTFS_EXPANDED"; \
 		rm -rf ./temp_gtfs; \
 		mkdir -p ./temp_gtfs; \
@@ -33,7 +33,7 @@ run-lyon:
 	fi
 	@echo "🚇 Lyon TCL Mode: Generating 4 periods (school_on/school_off/saturday/sunday)"
 	@GTFS_EXPANDED=$$(eval echo "$(GTFS)"); \
-	if [ -f "$$GTFS_EXPANDED" ] && echo "$$GTFS_EXPANDED" | grep -q '\.zip$$'; then \
+	if [ -f "$$GTFS_EXPANDED" ] && echo "$$GTFS_EXPANDED" | grep -qi '\.zip$$'; then \
 		echo "Extracting GTFS ZIP file: $$GTFS_EXPANDED"; \
 		rm -rf ./temp_gtfs; \
 		mkdir -p ./temp_gtfs; \
