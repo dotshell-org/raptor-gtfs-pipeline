@@ -22,7 +22,9 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Typing :: Typed",
 ]
-dependencies = []
+dependencies = [
+    "pydantic>=2.0",
+]
 
 [project.optional-dependencies]
 dev = [
@@ -34,13 +36,10 @@ dev = [
 ]
 
 [project.scripts]
-raptor-gtfs = "raptor_pipeline.cli:main"
+raptor-gtfs = "src.CommandLineInterface:CommandLineInterface.main"
 
 [tool.setuptools]
-packages = ["raptor_pipeline"]
-
-[tool.setuptools.package-dir]
-raptor_pipeline = "src"
+packages = ["src"]
 
 [tool.ruff]
 line-length = 100

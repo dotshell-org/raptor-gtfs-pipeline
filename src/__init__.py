@@ -1,7 +1,7 @@
 """Raptor GTFS Pipeline - Convert GTFS datasets to compact binary formats."""
 
-from .api import convert
-from .version import SCHEMA_VERSION, VERSION
+from src.PipelineConverter import PipelineConverter
+from src.Version import Version
 
-__version__ = VERSION
-__all__ = ["SCHEMA_VERSION", "VERSION", "convert"]
+__version__ = Version.VERSION
+__all__ = ["Version", "PipelineConverter"]

@@ -1,124 +1,126 @@
-"""Generate an HTML map visualization from RAPTOR binary data."""
-
 import argparse
 import struct
 from pathlib import Path
+from typing import Any, BinaryIO
 
 
-def read_uint16(f):
-    return struct.unpack("<H", f.read(2))[0]
+class Visualizer:
+    """Generate an HTML map visualization from RAPTOR binary data."""
 
+    @staticmethod
+    def read_uint16(f: BinaryIO) -> int:
+        return int(struct.unpack("<H", f.read(2))[0])
 
-def read_uint32(f):
-    return struct.unpack("<I", f.read(4))[0]
+    @staticmethod
+    def read_uint32(f: BinaryIO) -> int:
+        return int(struct.unpack("<I", f.read(4))[0])
 
+    @staticmethod
+    def read_float64(f: BinaryIO) -> float:
+        return float(struct.unpack("<d", f.read(8))[0])
 
-def read_float64(f):
-    return struct.unpack("<d", f.read(8))[0]
+    @staticmethod
+    def read_string(f: BinaryIO) -> str:
+        length = Visualizer.read_uint16(f)
+        return str(f.read(length).decode("utf-8"))
 
-
-def read_string(f):
-    length = read_uint16(f)
-    return f.read(length).decode("utf-8")
-
-
-def read_stops(stops_path: Path) -> list[dict]:
-    """Read stops from stops.bin."""
-    stops = []
-    with open(stops_path, "rb") as f:
-        magic = f.read(4)
-        if magic != b"RST2":
-            raise ValueError(f"Invalid stops.bin magic: {magic}")
+    @staticmethod
+    def read_stops(stops_path: Path) -> list[dict[str, Any]]:
+        """Read stops from stops.bin."""
+        stops = []
+        with open(stops_path, "rb") as f:
+            magic = f.read(4)
+            if magic != b"RST2":
+                raise ValueError(f"Invalid stops.bin magic: {magic!r}")
+            
+            schema_version = Visualizer.read_uint16(f)
+            stop_count = Visualizer.read_uint32(f)
+            
+            for _ in range(stop_count):
+                stop_id = Visualizer.read_uint32(f)
+                name = Visualizer.read_string(f)
+                lat = Visualizer.read_float64(f)
+                lon = Visualizer.read_float64(f)
+                
+                # Read route references
+                route_count = Visualizer.read_uint32(f)
+                route_ids = [Visualizer.read_uint32(f) for _ in range(route_count)]
+                
+                # Read transfers
+                transfer_count = Visualizer.read_uint32(f)
+                transfers = []
+                for _ in range(transfer_count):
+                    target_stop = Visualizer.read_uint32(f)
+                    walk_time = struct.unpack("<i", f.read(4))[0]
+                    transfers.append((target_stop, walk_time))
+                
+                stops.append({
+                    "id": stop_id,
+                    "name": name,
+                    "lat": lat,
+                    "lon": lon,
+                    "route_ids": route_ids,
+                    "transfers": transfers,
+                })
         
-        schema_version = read_uint16(f)
-        stop_count = read_uint32(f)
+        return stops
+
+    @staticmethod
+    def read_routes(routes_path: Path) -> list[dict[str, Any]]:
+        """Read routes from routes.bin."""
+        routes = []
+        with open(routes_path, "rb") as f:
+            magic = f.read(4)
+            if magic != b"RRT2":
+                raise ValueError(f"Invalid routes.bin magic: {magic!r}")
+            
+            schema_version = Visualizer.read_uint16(f)
+            route_count = Visualizer.read_uint32(f)
+            
+            for _ in range(route_count):
+                route_id = Visualizer.read_uint32(f)
+                route_name = Visualizer.read_string(f)
+                stop_count = Visualizer.read_uint32(f)
+                trip_count = Visualizer.read_uint32(f)
+                
+                stop_ids = [Visualizer.read_uint32(f) for _ in range(stop_count)]
+                
+                # Skip trip data (v2: tripIds block then flatStopTimes block)
+                for _ in range(trip_count):
+                    Visualizer.read_uint32(f)  # trip_id
+                for _ in range(trip_count * stop_count):
+                    struct.unpack("<i", f.read(4))[0]  # stop times
+                
+                routes.append({
+                    "id": route_id,
+                    "name": route_name,
+                    "stop_ids": stop_ids,
+                })
         
-        for _ in range(stop_count):
-            stop_id = read_uint32(f)
-            name = read_string(f)
-            lat = read_float64(f)
-            lon = read_float64(f)
-            
-            # Read route references
-            route_count = read_uint32(f)
-            route_ids = [read_uint32(f) for _ in range(route_count)]
-            
-            # Read transfers
-            transfer_count = read_uint32(f)
-            transfers = []
-            for _ in range(transfer_count):
-                target_stop = read_uint32(f)
-                walk_time = struct.unpack("<i", f.read(4))[0]
-                transfers.append((target_stop, walk_time))
-            
-            stops.append({
-                "id": stop_id,
-                "name": name,
-                "lat": lat,
-                "lon": lon,
-                "route_ids": route_ids,
-                "transfers": transfers,
-            })
-    
-    return stops
+        return routes
 
-
-def read_routes(routes_path: Path) -> list[dict]:
-    """Read routes from routes.bin."""
-    routes = []
-    with open(routes_path, "rb") as f:
-        magic = f.read(4)
-        if magic != b"RRT2":
-            raise ValueError(f"Invalid routes.bin magic: {magic}")
+    @staticmethod
+    def generate_html_map(stops: list[dict[str, Any]], routes: list[dict[str, Any]], output_path: Path) -> None:
+        """Generate an HTML map with the network."""
+        # Calculate center of the network
+        if not stops:
+            raise ValueError("No stops found in data")
         
-        schema_version = read_uint16(f)
-        route_count = read_uint32(f)
+        center_lat = sum(s["lat"] for s in stops) / len(stops)
+        center_lon = sum(s["lon"] for s in stops) / len(stops)
         
-        for _ in range(route_count):
-            route_id = read_uint32(f)
-            route_name = read_string(f)
-            stop_count = read_uint32(f)
-            trip_count = read_uint32(f)
-            
-            stop_ids = [read_uint32(f) for _ in range(stop_count)]
-            
-            # Skip trip data (v2: tripIds block then flatStopTimes block)
-            for _ in range(trip_count):
-                read_uint32(f)  # trip_id
-            for _ in range(trip_count * stop_count):
-                struct.unpack("<i", f.read(4))[0]  # stop times
-            
-            routes.append({
-                "id": route_id,
-                "name": route_name,
-                "stop_ids": stop_ids,
-            })
-    
-    return routes
-
-
-def generate_html_map(stops: list[dict], routes: list[dict], output_path: Path) -> None:
-    """Generate an HTML map with the network."""
-    
-    # Calculate center of the network
-    if not stops:
-        raise ValueError("No stops found in data")
-    
-    center_lat = sum(s["lat"] for s in stops) / len(stops)
-    center_lon = sum(s["lon"] for s in stops) / len(stops)
-    
-    # Build stop lookup
-    stop_by_id = {s["id"]: s for s in stops}
-    
-    # Generate colors for routes
-    colors = [
-        "#e6194b", "#3cb44b", "#ffe119", "#4363d8", "#f58231",
-        "#911eb4", "#42d4f4", "#f032e6", "#bfef45", "#fabed4",
-        "#469990", "#dcbeff", "#9A6324", "#fffac8", "#800000",
-        "#aaffc3", "#808000", "#ffd8b1", "#000075", "#a9a9a9",
-    ]
-    
-    html = f"""<!DOCTYPE html>
+        # Build stop lookup
+        stop_by_id = {s["id"]: s for s in stops}
+        
+        # Generate colors for routes
+        colors = [
+            "#e6194b", "#3cb44b", "#ffe119", "#4363d8", "#f58231",
+            "#911eb4", "#42d4f4", "#f032e6", "#bfef45", "#fabed4",
+            "#469990", "#dcbeff", "#9A6324", "#fffac8", "#800000",
+            "#aaffc3", "#808000", "#ffd8b1", "#000075", "#a9a9a9",
+        ]
+        
+        html = f"""<!DOCTYPE html>
 <html>
 <head>
     <title>RAPTOR Network Map</title>
@@ -201,11 +203,11 @@ def generate_html_map(stops: list[dict], routes: list[dict], output_path: Path) 
             zoomToBoundsOnClick: true
         }});
 """
-    
-    # Add stops as markers with clustering
-    for stop in stops:
-        popup = f"{stop['name']} (ID: {stop['id']})"
-        html += f"""
+        
+        # Add stops as markers with clustering
+        for stop in stops:
+            popup = f"{stop['name']} (ID: {stop['id']})"
+            html += f"""
         stopsData.push({{
             id: {stop['id']},
             lat: {stop['lat']},
@@ -213,8 +215,8 @@ def generate_html_map(stops: list[dict], routes: list[dict], output_path: Path) 
             name: "{popup.replace('"', '\\"')}"
         }});
 """
-    
-    html += """
+        
+        html += """
         // Create stop markers with clustering
         stopsData.forEach(function(stop) {
             var marker = L.circleMarker([stop.lat, stop.lon], {
@@ -230,47 +232,47 @@ def generate_html_map(stops: list[dict], routes: list[dict], output_path: Path) 
         
         stopClusterGroup.addTo(map);
 """
-    
-    # Add route lines with optimization
-    html += """
+        
+        # Add route lines with optimization
+        html += """
         // Routes with zoom-based rendering
 """
-    for i, route in enumerate(routes):
-        color = colors[i % len(colors)]
-        coords = []
-        for stop_id in route["stop_ids"]:
-            if stop_id in stop_by_id:
-                s = stop_by_id[stop_id]
-                coords.append(f"[{s['lat']}, {s['lon']}]")
-        
-        if len(coords) >= 2:
-            route_name = route['name'].replace('"', '\\"').replace("'", "\\'")
-            html += f"""
+        for i, route in enumerate(routes):
+            color = colors[i % len(colors)]
+            coords = []
+            for stop_id in route["stop_ids"]:
+                if stop_id in stop_by_id:
+                    s = stop_by_id[stop_id]
+                    coords.append(f"[{s['lat']}, {s['lon']}]")
+            
+            if len(coords) >= 2:
+                route_name = route['name'].replace('"', '\\"').replace("'", "\\'")
+                html += f"""
         routesData.push({{
             name: "{route_name}",
             color: "{color}",
             coords: [{', '.join(coords)}]
         }});
 """
-    
-    # Add transfer lines storage
-    html += """
+        
+        # Add transfer lines storage
+        html += """
         // Store transfers (walking connections)
 """
-    for stop in stops:
-        for target_id, walk_time in stop["transfers"]:
-            if target_id in stop_by_id:
-                target = stop_by_id[target_id]
-                minutes = walk_time // 60
-                html += f"""
+        for stop in stops:
+            for target_id, walk_time in stop["transfers"]:
+                if target_id in stop_by_id:
+                    target = stop_by_id[target_id]
+                    minutes = walk_time // 60
+                    html += f"""
         transfersData.push({{
             from: [{stop['lat']}, {stop['lon']}],
             to: [{target['lat']}, {target['lon']}],
             minutes: {minutes}
         }});
 """
-    
-    html += """
+        
+        html += """
         
         // Render ALL routes at all zoom levels
         function renderRoutes() {
@@ -346,35 +348,34 @@ def generate_html_map(stops: list[dict], routes: list[dict], output_path: Path) 
 </body>
 </html>
 """
-    
-    output_path.write_text(html)
-    print(f"Map generated: {output_path}")
+        output_path.write_text(html)
+        print(f"Map generated: {output_path}")
 
-
-def main():
-    parser = argparse.ArgumentParser(description="Generate HTML map from RAPTOR binary data")
-    parser.add_argument("--data", required=True, help="Path to raptor_data directory")
-    parser.add_argument("--output", default="network_map.html", help="Output HTML file")
-    args = parser.parse_args()
-    
-    data_path = Path(args.data)
-    stops_path = data_path / "stops.bin"
-    routes_path = data_path / "routes.bin"
-    
-    if not stops_path.exists():
-        raise FileNotFoundError(f"stops.bin not found in {data_path}")
-    if not routes_path.exists():
-        raise FileNotFoundError(f"routes.bin not found in {data_path}")
-    
-    print(f"Reading data from {data_path}...")
-    stops = read_stops(stops_path)
-    routes = read_routes(routes_path)
-    
-    print(f"Found {len(stops)} stops and {len(routes)} routes")
-    
-    output_path = Path(args.output)
-    generate_html_map(stops, routes, output_path)
+    @staticmethod
+    def main() -> None:
+        parser = argparse.ArgumentParser(description="Generate HTML map from RAPTOR binary data")
+        parser.add_argument("--data", required=True, help="Path to raptor_data directory")
+        parser.add_argument("--output", default="network_map.html", help="Output HTML file")
+        args = parser.parse_args()
+        
+        data_path = Path(args.data)
+        stops_path = data_path / "stops.bin"
+        routes_path = data_path / "routes.bin"
+        
+        if not stops_path.exists():
+            raise FileNotFoundError(f"stops.bin not found in {data_path}")
+        if not routes_path.exists():
+            raise FileNotFoundError(f"routes.bin not found in {data_path}")
+        
+        print(f"Reading data from {data_path}...")
+        stops = Visualizer.read_stops(stops_path)
+        routes = Visualizer.read_routes(routes_path)
+        
+        print(f"Found {len(stops)} stops and {len(routes)} routes")
+        
+        output_path = Path(args.output)
+        Visualizer.generate_html_map(stops, routes, output_path)
 
 
 if __name__ == "__main__":
-    main()
+    Visualizer.main()

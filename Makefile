@@ -1,52 +1,7 @@
-.PHONY: format lint typecheck test bench clean install run run-lyon graph
+.PHONY: format lint typecheck clean install graph
 
 install:
 	uv sync --all-extras
-
-run:
-	@if [ -z "$(GTFS)" ]; then \
-		echo "Error: GTFS parameter required. Usage: make run GTFS=path/to/gtfs"; \
-		exit 1; \
-	fi
-	@GTFS_EXPANDED=$$(eval echo "$(GTFS)"); \
-	if [ -f "$$GTFS_EXPANDED" ] && echo "$$GTFS_EXPANDED" | grep -qi '\.zip$$'; then \
-		echo "Extracting GTFS ZIP file: $$GTFS_EXPANDED"; \
-		rm -rf ./temp_gtfs; \
-		mkdir -p ./temp_gtfs; \
-		unzip -q "$$GTFS_EXPANDED" -d ./temp_gtfs; \
-		GTFS_DIR=$$(find ./temp_gtfs -name "*.txt" -exec dirname {} \; | head -1); \
-		if [ -n "$$GTFS_DIR" ]; then \
-			uv run raptor-gtfs convert --input "$$GTFS_DIR" --output ./raptor_data --format binary --split-by-periods true; \
-		else \
-			uv run raptor-gtfs convert --input ./temp_gtfs --output ./raptor_data --format binary --split-by-periods true; \
-		fi; \
-		rm -rf ./temp_gtfs; \
-	else \
-		uv run raptor-gtfs convert --input "$$GTFS_EXPANDED" --output ./raptor_data --format binary --split-by-periods true; \
-	fi
-
-run-lyon:
-	@if [ -z "$(GTFS)" ]; then \
-		echo "Error: GTFS parameter required. Usage: make run-lyon GTFS=path/to/gtfs"; \
-		exit 1; \
-	fi
-	@echo "🚇 Lyon TCL Mode: Generating 4 periods (school_on/school_off/saturday/sunday)"
-	@GTFS_EXPANDED=$$(eval echo "$(GTFS)"); \
-	if [ -f "$$GTFS_EXPANDED" ] && echo "$$GTFS_EXPANDED" | grep -qi '\.zip$$'; then \
-		echo "Extracting GTFS ZIP file: $$GTFS_EXPANDED"; \
-		rm -rf ./temp_gtfs; \
-		mkdir -p ./temp_gtfs; \
-		unzip -q "$$GTFS_EXPANDED" -d ./temp_gtfs; \
-		GTFS_DIR=$$(find ./temp_gtfs -name "*.txt" -exec dirname {} \; | head -1); \
-		if [ -n "$$GTFS_DIR" ]; then \
-			uv run raptor-gtfs convert --input "$$GTFS_DIR" --output ./raptor_data --format binary --split-by-periods true --mode lyon; \
-		else \
-			uv run raptor-gtfs convert --input ./temp_gtfs --output ./raptor_data --format binary --split-by-periods true --mode lyon; \
-		fi; \
-		rm -rf ./temp_gtfs; \
-	else \
-		uv run raptor-gtfs convert --input "$$GTFS_EXPANDED" --output ./raptor_data --format binary --split-by-periods true --mode lyon; \
-	fi
 
 graph:
 	@if [ -z "$(DATA)" ]; then \
@@ -54,10 +9,11 @@ graph:
 		exit 1; \
 	fi
 	@DATA_EXPANDED=$$(eval echo "$(DATA)"); \
-	uv run python -m raptor_pipeline.visualize --data "$$DATA_EXPANDED" --output network_map.html
+	uv run python -m src.Visualizer --data "$$DATA_EXPANDED" --output network_map.html
 
-typecheck:
-	uv run mypy src/raptor_pipeline
+lint:
+	uv run flake8 src/
+	uv run mypy --strict src/
 
 clean:
 	rm -rf build dist *.egg-info
