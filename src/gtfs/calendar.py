@@ -3,8 +3,8 @@
 import logging
 from collections import defaultdict
 
-from raptor_pipeline.gtfs.models import Calendar, CalendarDate, ServicePeriod
-from raptor_pipeline.gtfs.reader import GTFSReader
+from src.gtfs.models import ServicePeriod
+from src.gtfs.reader import GTFSReader
 
 logger = logging.getLogger(__name__)
 

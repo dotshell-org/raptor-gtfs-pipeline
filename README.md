@@ -5,7 +5,7 @@ Convert GTFS datasets to compact binary formats optimized for RAPTOR routing alg
 ## Installation
 
 ```bash
-make install
+uv sync
 ```
 
 ## Quick Start
@@ -36,7 +36,7 @@ The pipeline can automatically split the output into multiple folders based on s
 Use the `--split-by-periods` flag:
 
 ```bash
-python -m raptor_pipeline.cli convert --input /path/to/gtfs --output ./raptor_data --split-by-periods true
+uv run raptor-gtfs convert --input /path/to/gtfs --output ./raptor_data --split-by-periods true
 ```
 
 This will create separate folders:
@@ -144,6 +144,9 @@ All integers use little-endian encoding.
 
 Contains metadata, checksums, and statistics:
 
+<details>
+<summary>Show manifest.json example</summary>
+
 ```json
 {
   "schema_version": 2,
@@ -169,12 +172,14 @@ Contains metadata, checksums, and statistics:
 }
 ```
 
+</details>
+
 ## Development
 
 ### Setup
 
 ```bash
-make install
+uv sync
 ```
 
 ### Advanced Usage (CLI)
@@ -182,5 +187,5 @@ make install
 For advanced configuration, use the CLI directly:
 
 ```bash
-python -m raptor_pipeline.cli convert --input /path/to/gtfs --output ./raptor_data
+uv run raptor-gtfs convert --input /path/to/gtfs --output ./raptor_data
 ```

@@ -4,7 +4,7 @@ import json
 import logging
 from pathlib import Path
 
-from raptor_pipeline.gtfs.models import NetworkIndex, RouteData, StopData
+from src.gtfs.models import NetworkIndex, RouteData, StopData
 
 logger = logging.getLogger(__name__)
 

@@ -1,8 +1,7 @@
 .PHONY: format lint typecheck test bench clean install run run-lyon graph
 
 install:
-	python3 -m venv .venv
-	.venv/bin/pip install -e ".[dev]"
+	uv sync --all-extras
 
 run:
 	@if [ -z "$(GTFS)" ]; then \
@@ -17,13 +16,13 @@ run:
 		unzip -q "$$GTFS_EXPANDED" -d ./temp_gtfs; \
 		GTFS_DIR=$$(find ./temp_gtfs -name "*.txt" -exec dirname {} \; | head -1); \
 		if [ -n "$$GTFS_DIR" ]; then \
-			python -m raptor_pipeline.cli convert --input "$$GTFS_DIR" --output ./raptor_data --format binary --split-by-periods true; \
+			uv run raptor-gtfs convert --input "$$GTFS_DIR" --output ./raptor_data --format binary --split-by-periods true; \
 		else \
-			python -m raptor_pipeline.cli convert --input ./temp_gtfs --output ./raptor_data --format binary --split-by-periods true; \
+			uv run raptor-gtfs convert --input ./temp_gtfs --output ./raptor_data --format binary --split-by-periods true; \
 		fi; \
 		rm -rf ./temp_gtfs; \
 	else \
-		python -m raptor_pipeline.cli convert --input "$$GTFS_EXPANDED" --output ./raptor_data --format binary --split-by-periods true; \
+		uv run raptor-gtfs convert --input "$$GTFS_EXPANDED" --output ./raptor_data --format binary --split-by-periods true; \
 	fi
 
 run-lyon:
@@ -40,13 +39,13 @@ run-lyon:
 		unzip -q "$$GTFS_EXPANDED" -d ./temp_gtfs; \
 		GTFS_DIR=$$(find ./temp_gtfs -name "*.txt" -exec dirname {} \; | head -1); \
 		if [ -n "$$GTFS_DIR" ]; then \
-			python -m raptor_pipeline.cli convert --input "$$GTFS_DIR" --output ./raptor_data --format binary --split-by-periods true --mode lyon; \
+			uv run raptor-gtfs convert --input "$$GTFS_DIR" --output ./raptor_data --format binary --split-by-periods true --mode lyon; \
 		else \
-			python -m raptor_pipeline.cli convert --input ./temp_gtfs --output ./raptor_data --format binary --split-by-periods true --mode lyon; \
+			uv run raptor-gtfs convert --input ./temp_gtfs --output ./raptor_data --format binary --split-by-periods true --mode lyon; \
 		fi; \
 		rm -rf ./temp_gtfs; \
 	else \
-		python -m raptor_pipeline.cli convert --input "$$GTFS_EXPANDED" --output ./raptor_data --format binary --split-by-periods true --mode lyon; \
+		uv run raptor-gtfs convert --input "$$GTFS_EXPANDED" --output ./raptor_data --format binary --split-by-periods true --mode lyon; \
 	fi
 
 graph:
@@ -55,10 +54,10 @@ graph:
 		exit 1; \
 	fi
 	@DATA_EXPANDED=$$(eval echo "$(DATA)"); \
-	python -m raptor_pipeline.visualize --data "$$DATA_EXPANDED" --output network_map.html
+	uv run python -m raptor_pipeline.visualize --data "$$DATA_EXPANDED" --output network_map.html
 
 typecheck:
-	mypy raptor_pipeline
+	uv run mypy src/raptor_pipeline
 
 clean:
 	rm -rf build dist *.egg-info

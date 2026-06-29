@@ -2,10 +2,9 @@
 
 import logging
 import re
-from datetime import datetime
 
-from raptor_pipeline.gtfs.models import ServicePeriod
-from raptor_pipeline.gtfs.reader import GTFSReader
+from src.gtfs.models import ServicePeriod
+from src.gtfs.reader import GTFSReader
 
 logger = logging.getLogger(__name__)
 

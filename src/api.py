@@ -7,19 +7,18 @@ import platform
 from datetime import UTC, datetime
 from pathlib import Path
 
-from raptor_pipeline.gtfs.calendar import analyze_service_periods, get_trips_for_period
-from raptor_pipeline.gtfs.modes import get_mode_analyzer
-from raptor_pipeline.gtfs.models import ConvertConfig, Manifest, ValidationReport
-from raptor_pipeline.gtfs.reader import GTFSReader
-from raptor_pipeline.gtfs.validator import GTFSValidator
-from raptor_pipeline.optimization.indexing import build_network_index
-from raptor_pipeline.output.binary import validate_binary_files, write_binary_files
-from raptor_pipeline.output.json import write_json_files
-from raptor_pipeline.transform.routes import build_routes
-from raptor_pipeline.transform.stops import build_stops
-from raptor_pipeline.transform.transfers import build_transfers
-from raptor_pipeline.transform.trips import build_and_sort_trips
-from raptor_pipeline.version import SCHEMA_VERSION, VERSION
+from src.gtfs.calendar import analyze_service_periods, get_trips_for_period
+from src.gtfs.modes import get_mode_analyzer
+from src.gtfs.models import ConvertConfig, Manifest
+from src.gtfs.reader import GTFSReader
+from src.optimization.indexing import build_network_index
+from src.output.binary import write_binary_files
+from src.output.json import write_json_files
+from src.transform.routes import build_routes
+from src.transform.stops import build_stops
+from src.transform.transfers import build_transfers
+from src.transform.trips import build_and_sort_trips
+from src.version import SCHEMA_VERSION, VERSION
 
 logger = logging.getLogger(__name__)
 
@@ -50,11 +49,7 @@ def convert(
     reader = GTFSReader(input_path)
     reader.read_all()
 
-    # Validate
-    validator = GTFSValidator(reader)
-    validation_report = validator.validate()
-    if not validation_report.valid:
-        raise ValueError(f"GTFS validation failed with {len(validation_report.errors)} errors")
+
 
     # Check if we should split by service periods
     if config.split_by_periods:
@@ -274,81 +269,3 @@ def _filter_routes_by_trips(routes: list, period_trip_ids: set[str]) -> list:
     return filtered_routes
 
 
-def validate(output_path: str) -> ValidationReport:
-    """
-    Validate RAPTOR binary output.
-
-    Args:
-        output_path: Path to output directory containing binary files
-
-    Returns:
-        ValidationReport with results
-    """
-    logger.info(f"Validating output: {output_path}")
-
-    output_dir = Path(output_path)
-    errors: list[str] = []
-    warnings: list[str] = []
-
-    # Check required files exist
-    required_files = ["routes.bin", "stops.bin", "index.bin", "manifest.json"]
-    for filename in required_files:
-        if not (output_dir / filename).exists():
-            errors.append(f"Required file missing: {filename}")
-
-    if errors:
-        return ValidationReport(valid=False, errors=errors, warnings=warnings)
-
-    # Validate binary files
-    try:
-        stats = validate_binary_files(output_dir)
-    except Exception as e:
-        errors.append(f"Binary validation failed: {e}")
-        return ValidationReport(valid=False, errors=errors, warnings=warnings)
-
-    # Validate manifest
-    manifest_path = output_dir / "manifest.json"
-    try:
-        with open(manifest_path, encoding="utf-8") as f:
-            manifest_data = json.load(f)
-
-        # Check manifest has required fields
-        required_manifest_fields = [
-            "schema_version",
-            "tool_version",
-            "created_at",
-            "outputs",
-            "stats",
-        ]
-        for field in required_manifest_fields:
-            if field not in manifest_data:
-                warnings.append(f"Manifest missing field: {field}")
-
-        # Verify checksums
-        for filename, expected_hash in manifest_data.get("outputs", {}).items():
-            filepath = output_dir / filename
-            if filepath.exists():
-                with open(filepath, "rb") as f:
-                    actual_hash = hashlib.sha256(f.read()).hexdigest()
-                if actual_hash != expected_hash:
-                    errors.append(
-                        f"Checksum mismatch for {filename}: "
-                        f"expected {expected_hash}, got {actual_hash}"
-                    )
-
-    except Exception as e:
-        errors.append(f"Manifest validation failed: {e}")
-
-    valid = len(errors) == 0
-
-    if valid:
-        logger.info("Validation passed")
-    else:
-        logger.error(f"Validation failed with {len(errors)} errors")
-
-    return ValidationReport(
-        valid=valid,
-        errors=errors,
-        warnings=warnings,
-        stats=stats,
-    )

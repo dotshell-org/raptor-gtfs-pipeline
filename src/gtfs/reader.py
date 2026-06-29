@@ -4,7 +4,7 @@ import csv
 import logging
 from pathlib import Path
 
-from raptor_pipeline.gtfs.models import Agency, Calendar, CalendarDate, Route, Stop, StopTime, Transfer, Trip
+from src.gtfs.models import Agency, Calendar, CalendarDate, Route, Stop, StopTime, Transfer, Trip
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +66,7 @@ class GTFSReader:
                 logger.warning("agencies.txt not found, skipping")
                 return
 
-        with open(file_path, encoding="utf-8-sig") as f:
+        with open(file_path) as f:
             reader = csv.DictReader(f)
             for row in reader:
                 agency = Agency(
@@ -83,7 +83,7 @@ class GTFSReader:
             logger.info("calendar.txt not found, skipping")
             return
 
-        with open(file_path, encoding="utf-8-sig") as f:
+        with open(file_path) as f:
             reader = csv.DictReader(f)
             for row in reader:
                 calendar = Calendar(
@@ -107,7 +107,7 @@ class GTFSReader:
             logger.info("calendar_dates.txt not found, skipping")
             return
 
-        with open(file_path, encoding="utf-8-sig") as f:
+        with open(file_path) as f:
             reader = csv.DictReader(f)
             for row in reader:
                 # Handle empty or invalid exception_type
@@ -135,7 +135,7 @@ class GTFSReader:
             raise FileNotFoundError(f"Required file not found: {file_path}")
 
         stops_raw: list[tuple[str, Stop]] = []
-        with open(file_path, encoding="utf-8-sig") as f:
+        with open(file_path) as f:
             reader = csv.DictReader(f)
             for row in reader:
                 stop_id = row["stop_id"]
@@ -168,7 +168,7 @@ class GTFSReader:
             raise FileNotFoundError(f"Required file not found: {file_path}")
 
         routes_raw: list[tuple[str, Route]] = []
-        with open(file_path, encoding="utf-8-sig") as f:
+        with open(file_path) as f:
             reader = csv.DictReader(f)
             for row in reader:
                 route_id = row["route_id"]
@@ -209,7 +209,7 @@ class GTFSReader:
             raise FileNotFoundError(f"Required file not found: {file_path}")
 
         trips_raw: list[tuple[str, Trip]] = []
-        with open(file_path, encoding="utf-8-sig") as f:
+        with open(file_path) as f:
             reader = csv.DictReader(f)
             for row in reader:
                 trip_id = row["trip_id"]
@@ -249,7 +249,7 @@ class GTFSReader:
             raise FileNotFoundError(f"Required file not found: {file_path}")
 
         stop_times_raw: list[StopTime] = []
-        with open(file_path, encoding="utf-8-sig") as f:
+        with open(file_path) as f:
             reader = csv.DictReader(f)
             for row in reader:
                 trip_id = row["trip_id"]
@@ -294,7 +294,7 @@ class GTFSReader:
             logger.info("transfers.txt not found, no explicit transfers")
             return
 
-        with open(file_path, encoding="utf-8-sig") as f:
+        with open(file_path) as f:
             reader = csv.DictReader(f)
             for row in reader:
                 from_stop = row["from_stop_id"]

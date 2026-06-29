@@ -2,8 +2,8 @@
 
 import logging
 
-from raptor_pipeline.gtfs.models import RouteData, StopData
-from raptor_pipeline.gtfs.reader import GTFSReader
+from src.gtfs.models import RouteData, StopData
+from src.gtfs.reader import GTFSReader
 
 logger = logging.getLogger(__name__)
 

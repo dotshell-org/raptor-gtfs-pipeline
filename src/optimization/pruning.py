@@ -2,7 +2,7 @@
 
 import logging
 
-from raptor_pipeline.gtfs.models import RouteData
+from src.gtfs.models import RouteData
 
 logger = logging.getLogger(__name__)
 

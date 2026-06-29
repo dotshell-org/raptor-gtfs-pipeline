@@ -3,8 +3,8 @@
 import logging
 from collections import Counter
 
-from raptor_pipeline.gtfs.models import RouteData
-from raptor_pipeline.gtfs.reader import GTFSReader
+from src.gtfs.models import RouteData
+from src.gtfs.reader import GTFSReader
 
 logger = logging.getLogger(__name__)
 

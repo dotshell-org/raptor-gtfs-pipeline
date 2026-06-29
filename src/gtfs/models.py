@@ -154,16 +154,6 @@ class Manifest:
 
 
 @dataclass
-class ValidationReport:
-    """Report from validation process."""
-
-    valid: bool
-    errors: list[str] = field(default_factory=list)
-    warnings: list[str] = field(default_factory=list)
-    stats: dict[str, int] = field(default_factory=dict)
-
-
-@dataclass
 class ConvertConfig:
     """Configuration for conversion process."""
 

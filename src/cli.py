@@ -4,9 +4,9 @@ import argparse
 import logging
 import sys
 
-from raptor_pipeline.api import convert, validate
-from raptor_pipeline.gtfs.models import ConvertConfig
-from raptor_pipeline.version import VERSION
+from src.api import convert
+from src.gtfs.models import ConvertConfig
+from src.version import VERSION
 
 
 def setup_logging(verbose: bool = False) -> None:
@@ -50,29 +50,6 @@ def cmd_convert(args: argparse.Namespace) -> int:
         return 1
 
 
-def cmd_validate(args: argparse.Namespace) -> int:
-    """Execute validate command."""
-    setup_logging(args.verbose)
-
-    try:
-        report = validate(args.input)
-        if report.valid:
-            print("\nValidation successful!")
-            print(f"Stats: {report.stats}")
-            if report.warnings:
-                print(f"Warnings ({len(report.warnings)}):")
-                for warning in report.warnings:
-                    print(f"  - {warning}")
-            return 0
-        else:
-            print(f"\nValidation failed with {len(report.errors)} errors:")
-            for error in report.errors:
-                print(f"  - {error}")
-            return 1
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        logging.exception("Validation failed")
-        return 1
 
 
 def main() -> None:
@@ -155,10 +132,7 @@ def main() -> None:
     )
     convert_parser.set_defaults(func=cmd_convert)
 
-    # Validate command
-    validate_parser = subparsers.add_parser("validate", help="Validate binary output")
-    validate_parser.add_argument("--input", required=True, help="Path to output directory")
-    validate_parser.set_defaults(func=cmd_validate)
+
 
     # Parse and execute
     args = parser.parse_args()

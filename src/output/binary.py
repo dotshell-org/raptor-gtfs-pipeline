@@ -5,8 +5,8 @@ import struct
 from pathlib import Path
 from typing import BinaryIO
 
-from raptor_pipeline.gtfs.models import NetworkIndex, RouteData, StopData
-from raptor_pipeline.transform.compression import encode_times
+from src.gtfs.models import NetworkIndex, RouteData, StopData
+from src.transform.compression import encode_times
 
 logger = logging.getLogger(__name__)
 
@@ -215,92 +215,3 @@ def write_binary_files(
     logger.info(f"Wrote {index_path}")
 
     return files_written
-
-
-class BinaryReader:
-    """Base class for binary readers."""
-
-    def __init__(self, file: BinaryIO) -> None:
-        """Initialize reader with file handle."""
-        self.file = file
-
-    def read_bytes(self, n: int) -> bytes:
-        """Read n bytes."""
-        data = self.file.read(n)
-        if len(data) != n:
-            raise ValueError(f"Expected {n} bytes, got {len(data)}")
-        return data
-
-    def read_uint16(self) -> int:
-        """Read uint16 in little-endian."""
-        result: int = struct.unpack("<H", self.read_bytes(2))[0]
-        return result
-
-    def read_uint32(self) -> int:
-        """Read uint32 in little-endian."""
-        result: int = struct.unpack("<I", self.read_bytes(4))[0]
-        return result
-
-    def read_uint64(self) -> int:
-        """Read uint64 in little-endian."""
-        result: int = struct.unpack("<Q", self.read_bytes(8))[0]
-        return result
-
-    def read_int32(self) -> int:
-        """Read int32 in little-endian."""
-        result: int = struct.unpack("<i", self.read_bytes(4))[0]
-        return result
-
-    def read_float64(self) -> float:
-        """Read float64 in little-endian."""
-        result: float = struct.unpack("<d", self.read_bytes(8))[0]
-        return result
-
-    def read_string(self) -> str:
-        """Read length-prefixed UTF-8 string."""
-        length = self.read_uint16()
-        return self.read_bytes(length).decode("utf-8")
-
-
-def validate_binary_files(output_path: Path) -> dict[str, int]:
-    """Validate binary files can be read and return counts."""
-    logger.info(f"Validating binary files in {output_path}")
-
-    stats = {}
-
-    # Validate routes.bin
-    routes_path = output_path / "routes.bin"
-    with open(routes_path, "rb") as f:
-        reader = BinaryReader(f)
-        magic = reader.read_bytes(4)
-        if magic != b"RRT2":
-            raise ValueError(f"Invalid routes.bin magic: {magic!r}")
-        schema_version = reader.read_uint16()
-        route_count = reader.read_uint32()
-        stats["routes"] = route_count
-        logger.info(f"routes.bin: schema={schema_version}, routes={route_count}")
-
-    # Validate stops.bin
-    stops_path = output_path / "stops.bin"
-    with open(stops_path, "rb") as f:
-        reader = BinaryReader(f)
-        magic = reader.read_bytes(4)
-        if magic != b"RST2":
-            raise ValueError(f"Invalid stops.bin magic: {magic!r}")
-        schema_version = reader.read_uint16()
-        stop_count = reader.read_uint32()
-        stats["stops"] = stop_count
-        logger.info(f"stops.bin: schema={schema_version}, stops={stop_count}")
-
-    # Validate index.bin
-    index_path = output_path / "index.bin"
-    with open(index_path, "rb") as f:
-        reader = BinaryReader(f)
-        magic = reader.read_bytes(4)
-        if magic != b"RIDX":
-            raise ValueError(f"Invalid index.bin magic: {magic!r}")
-        schema_version = reader.read_uint16()
-        logger.info(f"index.bin: schema={schema_version}")
-
-    logger.info("Binary file validation passed")
-    return stats

@@ -4,8 +4,8 @@ import logging
 import math
 from typing import Any
 
-from raptor_pipeline.gtfs.models import RouteData, TripData
-from raptor_pipeline.gtfs.reader import GTFSReader
+from src.gtfs.models import RouteData, TripData
+from src.gtfs.reader import GTFSReader
 
 logger = logging.getLogger(__name__)
 

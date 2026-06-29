@@ -3,8 +3,8 @@
 import logging
 import math
 
-from raptor_pipeline.gtfs.models import StopData
-from raptor_pipeline.gtfs.reader import GTFSReader
+from src.gtfs.models import StopData
+from src.gtfs.reader import GTFSReader
 
 logger = logging.getLogger(__name__)
 

@@ -1,6 +1,6 @@
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "raptor-gtfs-pipeline"
@@ -36,8 +36,11 @@ dev = [
 [project.scripts]
 raptor-gtfs = "raptor_pipeline.cli:main"
 
-[tool.hatch.build.targets.wheel]
+[tool.setuptools]
 packages = ["raptor_pipeline"]
+
+[tool.setuptools.package-dir]
+raptor_pipeline = "src"
 
 [tool.ruff]
 line-length = 100
