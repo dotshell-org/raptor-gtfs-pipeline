@@ -27,6 +27,10 @@ class PipelineRunner:
         input_path_str: str,
         output_path_str: str,
         split_by_periods: bool = True,
+        gen_transfers: bool = False,
+        transfer_cutoff: int = 500,
+        speed_walk: float = 1.33,
+        allow_partial_trips: bool = False,
         verbose: bool = False,
     ) -> None:
         """Run the generic conversion pipeline, extracting ZIP files if necessary."""
@@ -63,8 +67,10 @@ class PipelineRunner:
                 format="binary",
                 compression=True,
                 debug_json=False,
-                gen_transfers=False,
-                allow_partial_trips=False,
+                gen_transfers=gen_transfers,
+                transfer_cutoff=transfer_cutoff,
+                speed_walk=speed_walk,
+                allow_partial_trips=allow_partial_trips,
                 split_by_periods=split_by_periods,
             )
 
@@ -101,6 +107,28 @@ class PipelineRunner:
             help="Generate separate folders per service period (default: true)",
         )
         parser.add_argument(
+            "--gen-transfers",
+            action="store_true",
+            help="Generate implicit walking transfers between nearby stops",
+        )
+        parser.add_argument(
+            "--transfer-cutoff",
+            type=int,
+            default=500,
+            help="Maximum walking distance for generated transfers in meters (default: 500)",
+        )
+        parser.add_argument(
+            "--speed-walk",
+            type=float,
+            default=1.33,
+            help="Walking speed in m/s (default: 1.33)",
+        )
+        parser.add_argument(
+            "--allow-partial-trips",
+            action="store_true",
+            help="Allow trips that do not serve all stops of a route",
+        )
+        parser.add_argument(
             "-v",
             "--verbose",
             action="store_true",
@@ -112,6 +140,10 @@ class PipelineRunner:
             input_path_str=args.input,
             output_path_str=args.output,
             split_by_periods=args.split_by_periods,
+            gen_transfers=args.gen_transfers,
+            transfer_cutoff=args.transfer_cutoff,
+            speed_walk=args.speed_walk,
+            allow_partial_trips=args.allow_partial_trips,
             verbose=args.verbose,
         )
 

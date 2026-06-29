@@ -1,6 +1,8 @@
 import logging
 import math
 
+import numpy as np
+
 from src.gtfs.GTFSReader import GTFSReader
 from src.gtfs.models.StopData import StopData
 
@@ -21,10 +23,8 @@ class TransferBuilder:
         """Build transfer data for stops."""
         logger.info("Building transfers")
 
-        # Create mapping from GTFS stop ID to internal stop ID
         gtfs_to_internal = {stop.stop_id_gtfs: stop.stop_id_internal for stop in stops}
 
-        # Process explicit transfers from GTFS
         for transfer in reader.transfers:
             from_stop_id = gtfs_to_internal.get(transfer.from_stop_id)
             to_stop_id = gtfs_to_internal.get(transfer.to_stop_id)
@@ -39,7 +39,6 @@ class TransferBuilder:
             from_stop = stops[from_stop_id]
             from_stop.transfers.append((to_stop_id, transfer.min_transfer_time))
 
-        # Generate implicit transfers if requested
         if gen_transfers:
             logger.info(
                 f"Generating transfers with cutoff {transfer_cutoff}m "
@@ -47,52 +46,83 @@ class TransferBuilder:
             )
             TransferBuilder._generate_walking_transfers(stops, speed_walk, transfer_cutoff)
 
-        # Sort and deduplicate transfers
+        # Sort and deduplicate transfers (keep minimum time per target)
         for stop in stops:
             if stop.transfers:
-                # Deduplicate: keep minimum time for each target
                 transfer_map: dict[int, int] = {}
                 for target_id, walk_time in stop.transfers:
                     if target_id not in transfer_map:
                         transfer_map[target_id] = walk_time
                     else:
                         transfer_map[target_id] = min(transfer_map[target_id], walk_time)
-
                 stop.transfers = sorted(transfer_map.items())
 
         total_transfers = sum(len(stop.transfers) for stop in stops)
         logger.info(f"Built {total_transfers} transfers")
 
     @staticmethod
-    def _generate_walking_transfers(stops: list[StopData], speed_walk: float, cutoff: int) -> None:
-        """Generate walking transfers between nearby stops."""
-        for i, stop_a in enumerate(stops):
-            for stop_b in stops[i + 1 :]:
-                distance = TransferBuilder._haversine_distance(
-                    stop_a.lat, stop_a.lon, stop_b.lat, stop_b.lon
+    def _generate_walking_transfers(
+        stops: list[StopData], speed_walk: float, cutoff: int
+    ) -> None:
+        """Generate walking transfers using vectorized numpy broadcasting (O(n²) → C speed)."""
+        n = len(stops)
+        if n == 0:
+            return
+
+        # Optimization: use chunks to avoid huge memory allocation for O(n^2) distance matrix
+        chunk_size = 2000 
+        
+        lats_all = np.radians(np.array([s.lat for s in stops], dtype=np.float32))
+        lons_all = np.radians(np.array([s.lon for s in stops], dtype=np.float32))
+        internal_ids = np.array([s.stop_id_internal for s in stops], dtype=np.int32)
+
+        for i in range(0, n, chunk_size):
+            end_i = min(i + chunk_size, n)
+            lats_i = lats_all[i:end_i, None]
+            lons_i = lons_all[i:end_i, None]
+            
+            # Distance calculation for chunk i against all stops j > i
+            # To keep it memory efficient, we can further chunk the second dimension or just process j > i
+            for j in range(i, n, chunk_size):
+                end_j = min(j + chunk_size, n)
+                
+                lats_j = lats_all[None, j:end_j]
+                lons_j = lons_all[None, j:end_j]
+                
+                dlat = lats_i - lats_j
+                dlon = lons_i - lons_j
+                
+                a = (
+                    np.sin(dlat / 2) ** 2
+                    + np.cos(lats_i) * np.cos(lats_j) * np.sin(dlon / 2) ** 2
                 )
-
-                if distance <= cutoff:
-                    walk_time = int(distance / speed_walk)
-
-                    # Add bidirectional transfers
-                    stop_a.transfers.append((stop_b.stop_id_internal, walk_time))
-                    stop_b.transfers.append((stop_a.stop_id_internal, walk_time))
+                # Use float32 to save memory
+                distances = (6371000.0 * 2.0 * np.arctan2(np.sqrt(a), np.sqrt(1.0 - a))).astype(np.float32)
+                
+                # Filter by cutoff and i < j (to avoid diagonal and double counting)
+                mask = distances <= cutoff
+                if i == j:
+                    # Exclude lower triangle and diagonal in the square block
+                    mask &= np.triu(np.ones(mask.shape, dtype=bool), k=1)
+                
+                rows, cols = np.where(mask)
+                
+                for r, c in zip(rows.tolist(), cols.tolist()):
+                    idx_i = i + r
+                    idx_j = j + c
+                    walk_time = int(distances[r, c] / speed_walk)
+                    stops[idx_i].transfers.append((internal_ids[idx_j], walk_time))
+                    stops[idx_j].transfers.append((internal_ids[idx_i], walk_time))
 
     @staticmethod
     def _haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-        """Calculate haversine distance between two points in meters."""
-        r = 6371000  # Earth radius in meters
-
-        phi1 = math.radians(lat1)
-        phi2 = math.radians(lat2)
+        """Scalar haversine distance between two points in meters (kept for reference)."""
+        r = 6_371_000
+        phi1, phi2 = math.radians(lat1), math.radians(lat2)
         delta_phi = math.radians(lat2 - lat1)
         delta_lambda = math.radians(lon2 - lon1)
-
         a = (
             math.sin(delta_phi / 2) ** 2
             + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2) ** 2
         )
-        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-
-        return r * c
+        return r * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))

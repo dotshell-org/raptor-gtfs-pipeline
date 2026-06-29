@@ -1,6 +1,7 @@
 import logging
 import math
-from typing import Any
+
+import numpy as np
 
 from src.gtfs.GTFSReader import GTFSReader
 from src.gtfs.models.RouteData import RouteData
@@ -10,84 +11,86 @@ logger = logging.getLogger(__name__)
 
 
 class TripBuilder:
-    """Trip transformation and sorting."""
+    """Trip transformation and sorting — vectorized via Pandas pivot + Numpy."""
 
     @staticmethod
     def build_and_sort_trips(
         reader: GTFSReader, routes: list[RouteData], allow_partial: bool = False
     ) -> None:
-        """Build TripData for each route, sort by departure time, align to canonical sequence."""
+        """Build TripData for each route using pivot_table; sort by departure time."""
         logger.info("Building and sorting trips")
 
-        # Group stop_times by trip
-        stop_times_by_trip: dict[str, list[Any]] = {}
-        for st in reader.stop_times:
-            if st.trip_id not in stop_times_by_trip:
-                stop_times_by_trip[st.trip_id] = []
-            stop_times_by_trip[st.trip_id].append(st)
+        st_df = reader.stop_times_df
+        trips_df = reader.trips_df
 
-        # Process each route
+        # Pre-index: route_id → list of (trip_id_gtfs, trip_id_internal)
+        trips_by_route: dict[str, list[tuple[str, int]]] = {}
+        for _, row in trips_df.iterrows():
+            trips_by_route.setdefault(str(row["route_id"]), []).append(
+                (str(row["trip_id"]), int(row["trip_id_internal"]))
+            )
+
+        total_trips = 0
+
         for route in routes:
             route_id_gtfs = route.route_id_gtfs
-            canonical_stops = route.stop_ids
+            canonical_stops = route.stop_ids  # list[int] of stop_id_internal
 
-            # Find trips for this route
-            route_trips = [trip for trip in reader.trips if trip.route_id == route_id_gtfs]
+            route_trip_pairs = trips_by_route.get(route_id_gtfs, [])
+            if not route_trip_pairs:
+                continue
 
-            trip_data_list: list[tuple[int, TripData]] = []
+            trip_internal_ids = [tid_int for _, tid_int in route_trip_pairs]
+            # Map trip_id_internal → trip_id_gtfs for warning messages
+            int_to_gtfs: dict[int, str] = {
+                tid_int: tid_gtfs for tid_gtfs, tid_int in route_trip_pairs
+            }
 
-            for trip in route_trips:
-                trip_id = trip.trip_id
-                trip_id_internal = reader.get_internal_trip_id(trip_id)
+            # Filter stop_times to this route's trips
+            route_st = st_df[st_df["trip_id_internal"].isin(trip_internal_ids)]
+            if route_st.empty:
+                continue
 
-                if trip_id not in stop_times_by_trip:
-                    logger.warning(f"Trip {trip_id} has no stop times, skipping")
-                    continue
+            # Pivot: rows = trip_id_internal, cols = stop_id_internal, values = arrival_time
+            pivot = route_st.pivot_table(
+                index="trip_id_internal",
+                columns="stop_id_internal",
+                values="arrival_time",
+                aggfunc="first",
+            )
 
-                stop_times = stop_times_by_trip[trip_id]
+            # Reindex to canonical stop order; missing stops become NaN → np.inf
+            pivot = pivot.reindex(columns=canonical_stops)
+            matrix = pivot.to_numpy(dtype=float).copy()  # (n_trips, n_stops)
+            matrix[np.isnan(matrix)] = np.inf
 
-                # Build mapping from stop_id to arrival_time
-                stop_time_map: dict[int, int] = {}
-                for st in stop_times:
-                    stop_id_internal = reader.get_internal_stop_id(st.stop_id)
-                    stop_time_map[stop_id_internal] = st.arrival_time
+            trip_data_list: list[tuple[float, TripData]] = []
 
-                # Align to canonical sequence
-                aligned_times: list[float] = []
-                is_partial = False
+            for i, trip_id_internal in enumerate(pivot.index):
+                arrival_times: list[float] = matrix[i].tolist()
+                is_partial = any(math.isinf(t) for t in arrival_times)
 
-                for stop_id in canonical_stops:
-                    if stop_id in stop_time_map:
-                        aligned_times.append(stop_time_map[stop_id])
-                    else:
-                        aligned_times.append(math.inf)
-                        is_partial = True
-
-                # Reject partial trips unless allowed
                 if is_partial and not allow_partial:
+                    trip_gtfs = int_to_gtfs.get(int(trip_id_internal), str(trip_id_internal))
                     logger.warning(
-                        f"Trip {trip_id} is partial (missing stops), rejecting. "
-                        f"Use --allow-partial-trips to include."
+                        f"Trip {trip_gtfs} is partial (missing stops), rejecting. "
+                        "Use --allow-partial-trips to include."
                     )
                     continue
 
-                # Get first departure time for sorting
-                first_time = aligned_times[0] if aligned_times else math.inf
-
+                first_time = arrival_times[0] if arrival_times else math.inf
                 trip_data = TripData(
-                    trip_id_internal=trip_id_internal,
-                    trip_id_gtfs=trip_id,
-                    arrival_times=aligned_times,
+                    trip_id_internal=int(trip_id_internal),
+                    trip_id_gtfs=int_to_gtfs.get(int(trip_id_internal), ""),
+                    arrival_times=arrival_times,
                     is_partial=is_partial,
                 )
+                trip_data_list.append((first_time, trip_data))
 
-                trip_data_list.append((first_time, trip_data))  # type: ignore
-
-            # Sort by first departure time
             trip_data_list.sort(key=lambda x: x[0])
             route.trips = [td for _, td in trip_data_list]
+            total_trips += len(route.trips)
 
             logger.debug(f"Route {route_id_gtfs}: {len(route.trips)} trips")
 
-        total_trips = sum(len(route.trips) for route in routes)
         logger.info(f"Built {total_trips} trips across {len(routes)} routes")

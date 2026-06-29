@@ -60,3 +60,4 @@ profiles/gtfs/*/
 
 # Temp extraction dirs
 temp_gtfs/
+.junie

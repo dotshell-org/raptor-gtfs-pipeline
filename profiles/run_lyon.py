@@ -139,7 +139,15 @@ def analyze_lyon_periods(reader: GTFSReader) -> list[ServicePeriod]:
 # Runner
 # ---------------------------------------------------------------------------
 
-def run(input_path_str: str, output_path_str: str, verbose: bool = False) -> None:
+def run(
+    input_path_str: str,
+    output_path_str: str,
+    gen_transfers: bool = False,
+    transfer_cutoff: int = 500,
+    speed_walk: float = 1.33,
+    allow_partial_trips: bool = False,
+    verbose: bool = False,
+) -> None:
     level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(
         level=level,
@@ -173,6 +181,10 @@ def run(input_path_str: str, output_path_str: str, verbose: bool = False) -> Non
             output_path=str(output_path),
             format="binary",
             compression=True,
+            gen_transfers=gen_transfers,
+            transfer_cutoff=transfer_cutoff,
+            speed_walk=speed_walk,
+            allow_partial_trips=allow_partial_trips,
             split_by_periods=True,
         )
 
@@ -209,10 +221,40 @@ def main() -> None:
         default="profiles/output/lyon",
         help="Output directory (default: profiles/output/lyon)",
     )
+    parser.add_argument(
+        "--gen-transfers",
+        action="store_true",
+        help="Generate implicit walking transfers between nearby stops",
+    )
+    parser.add_argument(
+        "--transfer-cutoff",
+        type=int,
+        default=500,
+        help="Maximum walking distance for generated transfers in meters (default: 500)",
+    )
+    parser.add_argument(
+        "--speed-walk",
+        type=float,
+        default=1.33,
+        help="Walking speed in m/s (default: 1.33)",
+    )
+    parser.add_argument(
+        "--allow-partial-trips",
+        action="store_true",
+        help="Allow trips that do not serve all stops of a route",
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
 
     args = parser.parse_args()
-    run(args.input, args.output, args.verbose)
+    run(
+        args.input,
+        args.output,
+        gen_transfers=args.gen_transfers,
+        transfer_cutoff=args.transfer_cutoff,
+        speed_walk=args.speed_walk,
+        allow_partial_trips=args.allow_partial_trips,
+        verbose=args.verbose
+    )
 
 
 if __name__ == "__main__":
