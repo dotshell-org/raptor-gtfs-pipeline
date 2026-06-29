@@ -53,3 +53,10 @@ raptor_data/
 # OS
 .DS_Store
 Thumbs.db
+
+# GTFS source files (too large for git)
+profiles/gtfs/*.zip
+profiles/gtfs/*/
+
+# Temp extraction dirs
+temp_gtfs/

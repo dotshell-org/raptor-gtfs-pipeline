@@ -4,10 +4,10 @@ import logging
 import platform
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Callable
 
 from src.gtfs.GTFSReader import GTFSReader
 from src.gtfs.CalendarAnalyzer import CalendarAnalyzer
-from src.gtfs.ModeAnalyzer import ModeAnalyzer
 from src.gtfs.models.ConvertConfig import ConvertConfig
 from src.gtfs.models.Manifest import Manifest
 from src.gtfs.models.NetworkIndex import NetworkIndex
@@ -33,6 +33,7 @@ class PipelineConverter:
         input_path: str,
         output_path: str,
         config: ConvertConfig | None = None,
+        period_analyzer: Callable[[GTFSReader], list[ServicePeriod]] | None = None,
     ) -> Manifest:
         """
         Convert GTFS data to RAPTOR binary format.
@@ -41,6 +42,9 @@ class PipelineConverter:
             input_path: Path to GTFS directory
             output_path: Path to output directory
             config: Optional conversion configuration
+            period_analyzer: Optional callable to compute service periods from the
+                             GTFSReader. Receives the reader and returns a list of
+                             ServicePeriod. If None, CalendarAnalyzer is used.
 
         Returns:
             Manifest with build metadata
@@ -58,11 +62,9 @@ class PipelineConverter:
         # Check if we should split by service periods
         periods: list[ServicePeriod] | None = None
         if config.split_by_periods:
-            # Use mode-specific analyzer if specified
-            mode_analyzer = ModeAnalyzer.get_mode_analyzer(config.mode)
-            if mode_analyzer:
-                logger.info(f"Using {config.mode} mode for period analysis")
-                periods = mode_analyzer(reader)
+            if period_analyzer:
+                logger.info("Using custom period analyzer")
+                periods = period_analyzer(reader)
             else:
                 periods = CalendarAnalyzer.analyze_service_periods(reader)
 

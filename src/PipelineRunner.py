@@ -10,7 +10,7 @@ from src.gtfs.models.ConvertConfig import ConvertConfig
 
 
 class PipelineRunner:
-    """Standalone runner for the RAPTOR GTFS conversion pipeline."""
+    """Generic standalone runner for the RAPTOR GTFS conversion pipeline."""
 
     @staticmethod
     def setup_logging(verbose: bool = False) -> None:
@@ -26,10 +26,10 @@ class PipelineRunner:
     def run_conversion(
         input_path_str: str,
         output_path_str: str,
-        mode: str = "auto",
+        split_by_periods: bool = True,
         verbose: bool = False,
     ) -> None:
-        """Run the conversion pipeline, extracting ZIP files if necessary."""
+        """Run the generic conversion pipeline, extracting ZIP files if necessary."""
         PipelineRunner.setup_logging(verbose)
         logger = logging.getLogger(__name__)
 
@@ -42,27 +42,21 @@ class PipelineRunner:
             if input_path.is_file() and input_path.suffix.lower() == ".zip":
                 logger.info(f"Extracting GTFS ZIP file: {input_path}")
                 temp_dir = tempfile.mkdtemp(prefix="raptor_gtfs_")
-                
+
                 with zipfile.ZipFile(input_path, "r") as zip_ref:
                     zip_ref.extractall(temp_dir)
-                
-                # Search for the directory containing the txt files
+
+                # Find the directory containing the GTFS .txt files
                 temp_path = Path(temp_dir)
                 txt_files = list(temp_path.glob("**/*.txt"))
                 if not txt_files:
                     raise FileNotFoundError("No .txt files found inside the GTFS ZIP archive.")
-                
-                # Use the directory of the first found txt file
+
                 actual_input = str(txt_files[0].parent)
                 logger.info(f"Using extracted GTFS directory: {actual_input}")
             else:
                 actual_input = str(input_path)
 
-            # Build config based on profiles
-            split_by_periods = True  # Default behavior from Makefile
-            
-            logger.info(f"Running conversion in mode: {mode}")
-            
             config = ConvertConfig(
                 input_path=actual_input,
                 output_path=str(output_path),
@@ -72,7 +66,6 @@ class PipelineRunner:
                 gen_transfers=False,
                 allow_partial_trips=False,
                 split_by_periods=split_by_periods,
-                mode=mode,
             )
 
             manifest = PipelineConverter.convert(actual_input, str(output_path), config)
@@ -81,16 +74,15 @@ class PipelineRunner:
             logger.info(f"Stats: {manifest.stats}")
 
         finally:
-            # Clean up temp directory if created
             if temp_dir:
                 logger.info(f"Cleaning up temporary directory: {temp_dir}")
                 shutil.rmtree(temp_dir, ignore_errors=True)
 
     @staticmethod
     def main() -> None:
-        """Main runner CLI entry point."""
+        """Main runner CLI entry point (generic mode only)."""
         parser = argparse.ArgumentParser(
-            description="Standalone runner for RAPTOR GTFS conversion pipeline with city profiles."
+            description="Generic runner for RAPTOR GTFS conversion pipeline."
         )
         parser.add_argument(
             "--input",
@@ -103,10 +95,10 @@ class PipelineRunner:
             help="Output directory (default: ./raptor_data)",
         )
         parser.add_argument(
-            "--mode",
-            default="auto",
-            choices=["auto", "lyon"],
-            help="Period detection mode/profile: auto (default), lyon (TCL Lyon custom profile)",
+            "--split-by-periods",
+            action="store_true",
+            default=True,
+            help="Generate separate folders per service period (default: true)",
         )
         parser.add_argument(
             "-v",
@@ -119,7 +111,7 @@ class PipelineRunner:
         PipelineRunner.run_conversion(
             input_path_str=args.input,
             output_path_str=args.output,
-            mode=args.mode,
+            split_by_periods=args.split_by_periods,
             verbose=args.verbose,
         )
 

@@ -15,4 +15,3 @@ class ConvertConfig(BaseModel):
     transfer_cutoff: int = 500  # meters
     jobs: int = 1
     split_by_periods: bool = False  # Generate separate folders per service period
-    mode: str = "auto"  # Period detection mode: auto, lyon

@@ -37,7 +37,6 @@ class CommandLineInterface:
             transfer_cutoff=args.transfer_cutoff,
             jobs=args.jobs,
             split_by_periods=args.split_by_periods,
-            mode=args.mode,
         )
 
         try:
@@ -122,13 +121,6 @@ class CommandLineInterface:
             type=lambda x: x.lower() == "true",
             default=False,
             help="Generate separate folders per service period (weekday/saturday/sunday) (default: false)",
-        )
-        convert_parser.add_argument(
-            "--mode",
-            type=str,
-            default="auto",
-            choices=["auto", "lyon"],
-            help="Period detection mode: auto (default), lyon (school_on/school_off/sat/sun)",
         )
         convert_parser.set_defaults(func=CommandLineInterface.cmd_convert)
 
