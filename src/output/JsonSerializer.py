@@ -20,7 +20,7 @@ class JsonSerializer:
         index: NetworkIndex,
     ) -> dict[str, str]:
         """Write debug JSON files."""
-        logger.info(f"Writing debug JSON files to {output_path}")
+        logger.debug(f"Writing debug JSON files to {output_path}")
 
         output_path.mkdir(parents=True, exist_ok=True)
 
@@ -54,7 +54,7 @@ class JsonSerializer:
         with open(routes_path, "w", encoding="utf-8") as f:
             json.dump(routes_data, f, indent=2, sort_keys=True)
         files_written["routes.json"] = str(routes_path)
-        logger.info(f"Wrote {routes_path}")
+        logger.debug(f"Wrote {routes_path}")
 
         # Write stops.json
         stops_data = []
@@ -78,7 +78,7 @@ class JsonSerializer:
         with open(stops_path, "w", encoding="utf-8") as f:
             json.dump(stops_data, f, indent=2, sort_keys=True)
         files_written["stops.json"] = str(stops_path)
-        logger.info(f"Wrote {stops_path}")
+        logger.debug(f"Wrote {stops_path}")
 
         # Write index.json
         index_data = {
@@ -97,6 +97,6 @@ class JsonSerializer:
         with open(index_path, "w", encoding="utf-8") as f:
             json.dump(index_data, f, indent=2, sort_keys=True)
         files_written["index.json"] = str(index_path)
-        logger.info(f"Wrote {index_path}")
+        logger.debug(f"Wrote {index_path}")
 
         return files_written

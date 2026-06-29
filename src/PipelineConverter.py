@@ -168,14 +168,22 @@ class PipelineConverter:
         files_written: dict[str, str] = {}
 
         if config.format in ("binary", "both"):
-            binary_files = BinarySerializer.write_binary_files(
+            BinarySerializer.write_binary_files(
                 output_dir, routes, stops, index, Version.SCHEMA_VERSION, config.compression
             )
-            files_written.update(binary_files)
+            files_written.update({
+                "routes.bin": str(output_dir / "routes.bin"),
+                "stops.bin": str(output_dir / "stops.bin"),
+                "index.bin": str(output_dir / "index.bin")
+            })
 
         if config.format in ("json", "both") or config.debug_json:
-            json_files = JsonSerializer.write_json_files(output_dir, routes, stops, index)
-            files_written.update(json_files)
+            JsonSerializer.write_json_files(output_dir, routes, stops, index)
+            files_written.update({
+                "routes.json": str(output_dir / "routes.json"),
+                "stops.json": str(output_dir / "stops.json"),
+                "index.json": str(output_dir / "index.json")
+            })
 
         # Compute checksums
         checksums = {}
@@ -230,10 +238,10 @@ class PipelineConverter:
         logger.info(f"Wrote manifest to {manifest_path}")
 
         if period_name:
-            logger.info(f"Period '{period_name}' completed")
+            print(f"Period '{period_name}' completed")
         else:
             elapsed = (datetime.now(UTC) - start_time).total_seconds()
-            logger.info(f"Conversion completed in {elapsed:.2f}s")
+            print(f"Conversion completed in {elapsed:.2f}s")
 
         return manifest
 

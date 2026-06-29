@@ -24,7 +24,7 @@ class BinarySerializer:
         compression: bool = True,
     ) -> dict[str, str]:
         """Write all binary files and return filenames."""
-        logger.info(f"Writing binary files to {output_path}")
+        logger.debug(f"Writing binary files to {output_path}")
 
         output_path.mkdir(parents=True, exist_ok=True)
 
@@ -41,7 +41,7 @@ class BinarySerializer:
                 index.route_offsets[route.route_id_internal] = offset
 
         files_written["routes.bin"] = str(routes_path)
-        logger.info(f"Wrote {routes_path}")
+        logger.debug(f"Wrote {routes_path}")
 
         # Write stops.bin
         stops_path = output_path / "stops.bin"
@@ -54,7 +54,7 @@ class BinarySerializer:
                 index.stop_offsets[stop.stop_id_internal] = offset
 
         files_written["stops.bin"] = str(stops_path)
-        logger.info(f"Wrote {stops_path}")
+        logger.debug(f"Wrote {stops_path}")
 
         # Write index.bin
         index_path = output_path / "index.bin"
@@ -64,6 +64,6 @@ class BinarySerializer:
             index_writer.write_index(index)
 
         files_written["index.bin"] = str(index_path)
-        logger.info(f"Wrote {index_path}")
+        logger.debug(f"Wrote {index_path}")
 
         return files_written

@@ -68,7 +68,7 @@ class TripBuilder:
 
                 if is_partial and not allow_partial:
                     trip_gtfs = int_to_gtfs.get(int(trip_id_internal), str(trip_id_internal))
-                    logger.warning(
+                    logger.debug(
                         f"Trip {trip_gtfs} is partial (missing stops), rejecting. "
                         "Use --allow-partial-trips to include."
                     )

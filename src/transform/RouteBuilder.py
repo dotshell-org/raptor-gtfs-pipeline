@@ -93,7 +93,7 @@ class RouteBuilder:
         tied_sequences = [seq for seq, count in most_common if count == canonical_count]
 
         if len(tied_sequences) > 1:
-            logger.warning(
+            logger.debug(
                 f"Route {route_id} has {len(tied_sequences)} sequences with equal frequency "
                 f"({canonical_count} trips). Using lexicographic order as tiebreaker."
             )

@@ -178,7 +178,7 @@ class GTFSReader:
         df["_lon"] = pd.to_numeric(df["stop_lon"].str.strip(), errors="coerce")
         invalid = df["_lat"].isna() | df["_lon"].isna()
         if invalid.any():
-            logger.warning(f"{invalid.sum()} stops with invalid coordinates, skipping")
+            logger.debug(f"{invalid.sum()} stops with invalid coordinates, skipping")
             df = df[~invalid]
 
         df = df.sort_values("stop_id").reset_index(drop=True)
@@ -210,7 +210,7 @@ class GTFSReader:
                 df["route_type"].str.strip(), errors="coerce"
             ).isna()
             if bad_type.any():
-                logger.warning(
+                logger.debug(
                     f"{bad_type.sum()} routes with invalid route_type, defaulting to 3 (bus)"
                 )
 
@@ -282,7 +282,7 @@ class GTFSReader:
         # Drop invalid rows
         invalid = df["arrival_time"].isna() | df["stop_sequence"].isna()
         if invalid.any():
-            logger.warning(f"Dropping {invalid.sum()} stop_times with invalid time/sequence")
+            logger.debug(f"Dropping {invalid.sum()} stop_times with invalid time/sequence")
             df = df[~invalid]
 
         df["arrival_time"] = df["arrival_time"].astype(int)
@@ -295,7 +295,7 @@ class GTFSReader:
 
         unmapped = df["stop_id_internal"].isna() | df["trip_id_internal"].isna()
         if unmapped.any():
-            logger.warning(f"Dropping {unmapped.sum()} stop_times with unknown stop/trip IDs")
+            logger.debug(f"Dropping {unmapped.sum()} stop_times with unknown stop/trip IDs")
             df = df[~unmapped]
 
         df["stop_id_internal"] = df["stop_id_internal"].astype(int)

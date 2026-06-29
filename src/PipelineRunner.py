@@ -15,10 +15,10 @@ class PipelineRunner:
     @staticmethod
     def setup_logging(verbose: bool = False) -> None:
         """Configure logging."""
-        level = logging.DEBUG if verbose else logging.INFO
+        level = logging.DEBUG if verbose else logging.WARNING
         logging.basicConfig(
             level=level,
-            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            format="%(asctime)s - %(levelname)s - %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
         )
 
