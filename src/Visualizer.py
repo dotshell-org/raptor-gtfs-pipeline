@@ -33,7 +33,7 @@ class Visualizer:
             if magic != b"RST2":
                 raise ValueError(f"Invalid stops.bin magic: {magic!r}")
             
-            schema_version = Visualizer.read_uint16(f)
+            _ = Visualizer.read_uint16(f)  # schema_version
             stop_count = Visualizer.read_uint32(f)
             
             for _ in range(stop_count):
@@ -74,7 +74,7 @@ class Visualizer:
             if magic != b"RRT2":
                 raise ValueError(f"Invalid routes.bin magic: {magic!r}")
             
-            schema_version = Visualizer.read_uint16(f)
+            _ = Visualizer.read_uint16(f)  # schema_version
             route_count = Visualizer.read_uint32(f)
             
             for _ in range(route_count):
@@ -100,7 +100,11 @@ class Visualizer:
         return routes
 
     @staticmethod
-    def generate_html_map(stops: list[dict[str, Any]], routes: list[dict[str, Any]], output_path: Path) -> None:
+    def generate_html_map(
+        stops: list[dict[str, Any]],
+        routes: list[dict[str, Any]],
+        output_path: Path,
+    ) -> None:
         """Generate an HTML map with the network."""
         # Calculate center of the network
         if not stops:
@@ -127,8 +131,10 @@ class Visualizer:
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+    <link rel="stylesheet"
+          href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet"
+          href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <style>
@@ -207,12 +213,13 @@ class Visualizer:
         # Add stops as markers with clustering
         for stop in stops:
             popup = f"{stop['name']} (ID: {stop['id']})"
+            safe_popup = popup.replace('"', '&quot;')
             html += f"""
         stopsData.push({{
             id: {stop['id']},
             lat: {stop['lat']},
             lon: {stop['lon']},
-            name: "{popup.replace('"', '\\"')}"
+            name: "{safe_popup}"
         }});
 """
         

@@ -1,9 +1,9 @@
 import logging
 from pathlib import Path
 
+from src.gtfs.models.NetworkIndex import NetworkIndex
 from src.gtfs.models.RouteData import RouteData
 from src.gtfs.models.StopData import StopData
-from src.gtfs.models.NetworkIndex import NetworkIndex
 
 logger = logging.getLogger(__name__)
 

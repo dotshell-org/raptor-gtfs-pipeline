@@ -3,14 +3,14 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from src.gtfs.models.Stop import Stop
-from src.gtfs.models.Route import Route
-from src.gtfs.models.Trip import Trip
-from src.gtfs.models.StopTime import StopTime
-from src.gtfs.models.Transfer import Transfer
 from src.gtfs.models.Agency import Agency
 from src.gtfs.models.Calendar import Calendar
 from src.gtfs.models.CalendarDate import CalendarDate
+from src.gtfs.models.Route import Route
+from src.gtfs.models.Stop import Stop
+from src.gtfs.models.StopTime import StopTime
+from src.gtfs.models.Transfer import Transfer
+from src.gtfs.models.Trip import Trip
 
 logger = logging.getLogger(__name__)
 
@@ -136,12 +136,18 @@ class GTFSReader:
         for row in rows:
             exception_type_str = row.get("exception_type", "").strip()
             if not exception_type_str:
-                logger.warning(f"Service {row['service_id']} on {row['date']} has empty exception_type, skipping")
+                logger.warning(
+                    f"Service {row['service_id']} on {row['date']} "
+                    "has empty exception_type, skipping"
+                )
                 continue
             try:
                 exception_type = int(exception_type_str)
             except ValueError:
-                logger.warning(f"Service {row['service_id']} on {row['date']} has invalid exception_type '{exception_type_str}', skipping")
+                logger.warning(
+                    f"Service {row['service_id']} on {row['date']} has "
+                    f"invalid exception_type '{exception_type_str}', skipping"
+                )
                 continue
             
             calendar_date = CalendarDate(
@@ -184,7 +190,10 @@ class GTFSReader:
                 try:
                     route_type = int(route_type_str)
                 except ValueError:
-                    logger.warning(f"Route {route_id} has invalid route_type '{route_type_str}', using default (3=bus)")
+                    logger.warning(
+                        f"Route {route_id} has invalid route_type "
+                        f"'{route_type_str}', using default (3=bus)"
+                    )
                     route_type = 3
             
             route = Route(
@@ -210,7 +219,10 @@ class GTFSReader:
                 try:
                     direction_id = int(direction_id_str)
                 except ValueError:
-                    logger.warning(f"Trip {trip_id} has invalid direction_id '{direction_id_str}', using 0")
+                    logger.warning(
+                        f"Trip {trip_id} has invalid direction_id "
+                        f"'{direction_id_str}', using 0"
+                    )
                     direction_id = 0
             
             trip = Trip(
@@ -244,7 +256,10 @@ class GTFSReader:
             try:
                 stop_sequence = int(stop_sequence_str)
             except ValueError:
-                logger.warning(f"Trip {trip_id} stop {stop_id} has invalid stop_sequence '{stop_sequence_str}', skipping")
+                logger.warning(
+                    f"Trip {trip_id} stop {stop_id} has invalid "
+                    f"stop_sequence '{stop_sequence_str}', skipping"
+                )
                 continue
 
             stop_time = StopTime(
@@ -277,7 +292,10 @@ class GTFSReader:
                 try:
                     min_time = int(min_time_str)
                 except ValueError:
-                    logger.warning(f"Transfer {from_stop}->{to_stop} has invalid min_transfer_time '{min_time_str}', using 0")
+                    logger.warning(
+                        f"Transfer {from_stop}->{to_stop} has invalid "
+                        f"min_transfer_time '{min_time_str}', using 0"
+                    )
                     min_time = 0
 
             transfer = Transfer(

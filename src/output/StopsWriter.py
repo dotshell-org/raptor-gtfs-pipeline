@@ -1,5 +1,5 @@
-from src.output.BinaryWriter import BinaryWriter
 from src.gtfs.models.StopData import StopData
+from src.output.BinaryWriter import BinaryWriter
 
 
 class StopsWriter(BinaryWriter):

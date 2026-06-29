@@ -1,4 +1,5 @@
 from pydantic import BaseModel, Field
+
 from src.gtfs.models.TripData import TripData
 
 

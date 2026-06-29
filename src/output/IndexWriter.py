@@ -1,5 +1,5 @@
-from src.output.BinaryWriter import BinaryWriter
 from src.gtfs.models.NetworkIndex import NetworkIndex
+from src.output.BinaryWriter import BinaryWriter
 
 
 class IndexWriter(BinaryWriter):

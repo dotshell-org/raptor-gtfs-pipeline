@@ -2,9 +2,9 @@ import logging
 import math
 from typing import Any
 
+from src.gtfs.GTFSReader import GTFSReader
 from src.gtfs.models.RouteData import RouteData
 from src.gtfs.models.TripData import TripData
-from src.gtfs.GTFSReader import GTFSReader
 
 logger = logging.getLogger(__name__)
 

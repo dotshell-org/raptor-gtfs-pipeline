@@ -1,8 +1,8 @@
 import logging
 from collections import Counter
 
-from src.gtfs.models.RouteData import RouteData
 from src.gtfs.GTFSReader import GTFSReader
+from src.gtfs.models.RouteData import RouteData
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +72,9 @@ class RouteBuilder:
         return routes
 
     @staticmethod
-    def _find_canonical_sequence(sequences: list[tuple[str, ...]], route_id: str) -> tuple[str, ...]:
+    def _find_canonical_sequence(
+        sequences: list[tuple[str, ...]], route_id: str
+    ) -> tuple[str, ...]:
         """Find canonical stop sequence by majority vote, with lexicographic tiebreaker."""
         if not sequences:
             raise ValueError(f"Route {route_id} has no sequences")

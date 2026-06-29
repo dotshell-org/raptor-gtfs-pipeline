@@ -5,8 +5,8 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-from src.PipelineConverter import PipelineConverter
 from src.gtfs.models.ConvertConfig import ConvertConfig
+from src.PipelineConverter import PipelineConverter
 
 
 class PipelineRunner:

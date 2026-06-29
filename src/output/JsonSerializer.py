@@ -2,9 +2,9 @@ import json
 import logging
 from pathlib import Path
 
+from src.gtfs.models.NetworkIndex import NetworkIndex
 from src.gtfs.models.RouteData import RouteData
 from src.gtfs.models.StopData import StopData
-from src.gtfs.models.NetworkIndex import NetworkIndex
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +68,8 @@ class JsonSerializer:
                     "lon": stop.lon,
                     "route_ids": stop.route_ids,
                     "transfers": [
-                        {"target_stop_id": target, "walk_time": time} for target, time in stop.transfers
+                        {"target_stop_id": target, "walk_time": time}
+                        for target, time in stop.transfers
                     ],
                 }
             )
@@ -87,7 +88,9 @@ class JsonSerializer:
             "route_offsets": {
                 str(route_id): offset for route_id, offset in index.route_offsets.items()
             },
-            "stop_offsets": {str(stop_id): offset for stop_id, offset in index.stop_offsets.items()},
+            "stop_offsets": {
+                str(stop_id): offset for stop_id, offset in index.stop_offsets.items()
+            },
         }
 
         index_path = output_path / "index.json"

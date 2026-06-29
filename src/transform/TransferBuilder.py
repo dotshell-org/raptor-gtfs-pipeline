@@ -1,8 +1,8 @@
 import logging
 import math
 
-from src.gtfs.models.StopData import StopData
 from src.gtfs.GTFSReader import GTFSReader
+from src.gtfs.models.StopData import StopData
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,8 @@ class TransferBuilder:
         # Generate implicit transfers if requested
         if gen_transfers:
             logger.info(
-                f"Generating transfers with cutoff {transfer_cutoff}m and walk speed {speed_walk}m/s"
+                f"Generating transfers with cutoff {transfer_cutoff}m "
+                f"and walk speed {speed_walk}m/s"
             )
             TransferBuilder._generate_walking_transfers(stops, speed_walk, transfer_cutoff)
 
@@ -67,7 +68,9 @@ class TransferBuilder:
         """Generate walking transfers between nearby stops."""
         for i, stop_a in enumerate(stops):
             for stop_b in stops[i + 1 :]:
-                distance = TransferBuilder._haversine_distance(stop_a.lat, stop_a.lon, stop_b.lat, stop_b.lon)
+                distance = TransferBuilder._haversine_distance(
+                    stop_a.lat, stop_a.lon, stop_b.lat, stop_b.lon
+                )
 
                 if distance <= cutoff:
                     walk_time = int(distance / speed_walk)

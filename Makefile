@@ -12,7 +12,7 @@ graph:
 	uv run python -m src.Visualizer --data "$$DATA_EXPANDED" --output network_map.html
 
 lint:
-	uv run flake8 src/
+	uv run ruff check src/ profiles/
 	uv run mypy --strict src/
 
 clean:
@@ -21,3 +21,4 @@ clean:
 	find . -type f -name "*.pyc" -delete
 	rm -rf .mypy_cache .pytest_cache .ruff_cache
 	rm -rf raptor_data
+	rm -rf .venv

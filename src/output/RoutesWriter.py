@@ -1,5 +1,5 @@
-from src.output.BinaryWriter import BinaryWriter
 from src.gtfs.models.RouteData import RouteData
+from src.output.BinaryWriter import BinaryWriter
 from src.transform.TimeCompressor import TimeCompressor
 
 

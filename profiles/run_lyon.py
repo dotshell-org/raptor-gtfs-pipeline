@@ -19,7 +19,6 @@ from src.gtfs.models.ConvertConfig import ConvertConfig
 from src.gtfs.models.ServicePeriod import ServicePeriod
 from src.PipelineConverter import PipelineConverter
 
-
 # ---------------------------------------------------------------------------
 # Lyon-specific period detection
 # ---------------------------------------------------------------------------
@@ -195,7 +194,10 @@ def run(input_path_str: str, output_path_str: str, verbose: bool = False) -> Non
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="RAPTOR GTFS pipeline — Lyon TCL profile (school_on / school_off / saturday / sunday)"
+        description=(
+            "RAPTOR GTFS pipeline — Lyon TCL profile "
+            "(school_on / school_off / saturday / sunday)"
+        )
     )
     parser.add_argument(
         "--input",

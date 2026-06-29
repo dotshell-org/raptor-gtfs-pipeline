@@ -2,15 +2,14 @@ import hashlib
 import json
 import logging
 import platform
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Callable
 
-from src.gtfs.GTFSReader import GTFSReader
 from src.gtfs.CalendarAnalyzer import CalendarAnalyzer
+from src.gtfs.GTFSReader import GTFSReader
 from src.gtfs.models.ConvertConfig import ConvertConfig
 from src.gtfs.models.Manifest import Manifest
-from src.gtfs.models.NetworkIndex import NetworkIndex
 from src.gtfs.models.RouteData import RouteData
 from src.gtfs.models.ServicePeriod import ServicePeriod
 from src.optimization.NetworkIndexBuilder import NetworkIndexBuilder
@@ -69,14 +68,18 @@ class PipelineConverter:
                 periods = CalendarAnalyzer.analyze_service_periods(reader)
 
             if not periods:
-                logger.warning("split_by_periods enabled but no calendar data found, generating single output")
+                logger.warning(
+                    "split_by_periods enabled but no calendar data found, "
+                    "generating single output"
+                )
                 periods = None
 
         # Build routes and trips ONCE (optimization for period splitting)
         logger.info("Building routes and trips from GTFS data...")
         routes = RouteBuilder.build_routes(reader)
         TripBuilder.build_and_sort_trips(reader, routes, allow_partial=config.allow_partial_trips)
-        logger.info(f"Built {len(routes)} routes with {sum(len(r.trips) for r in routes)} trips total")
+        total_trips = sum(len(r.trips) for r in routes)
+        logger.info(f"Built {len(routes)} routes with {total_trips} trips total")
 
         # If splitting by periods, generate one folder per period
         if periods:
@@ -95,8 +98,12 @@ class PipelineConverter:
                 logger.info(f"Found {len(period_trip_ids)} trips for period {period.name}")
 
                 # Filter routes (reuse pre-built routes)
-                filtered_routes = PipelineConverter._filter_routes_by_trips(routes, period_trip_ids)
-                logger.info(f"After filtering: {len(filtered_routes)} routes with trips in this period")
+                filtered_routes = PipelineConverter._filter_routes_by_trips(
+                    routes, period_trip_ids
+                )
+                logger.info(
+                    f"After filtering: {len(filtered_routes)} routes with trips in this period"
+                )
 
                 # Generate output for this period
                 manifest = PipelineConverter._write_period_output(
@@ -231,7 +238,9 @@ class PipelineConverter:
         return manifest
 
     @staticmethod
-    def _filter_routes_by_trips(routes: list[RouteData], period_trip_ids: set[str]) -> list[RouteData]:
+    def _filter_routes_by_trips(
+        routes: list[RouteData], period_trip_ids: set[str]
+    ) -> list[RouteData]:
         """
         Filter routes to only include trips that belong to the specified period.
         """

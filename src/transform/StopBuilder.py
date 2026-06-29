@@ -1,8 +1,8 @@
 import logging
 
+from src.gtfs.GTFSReader import GTFSReader
 from src.gtfs.models.RouteData import RouteData
 from src.gtfs.models.StopData import StopData
-from src.gtfs.GTFSReader import GTFSReader
 
 logger = logging.getLogger(__name__)
 

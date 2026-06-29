@@ -1,8 +1,8 @@
 import logging
 from collections import defaultdict
 
-from src.gtfs.models.ServicePeriod import ServicePeriod
 from src.gtfs.GTFSReader import GTFSReader
+from src.gtfs.models.ServicePeriod import ServicePeriod
 
 logger = logging.getLogger(__name__)
 

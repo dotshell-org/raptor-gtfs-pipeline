@@ -2,8 +2,8 @@ import argparse
 import logging
 import sys
 
-from src.PipelineConverter import PipelineConverter
 from src.gtfs.models.ConvertConfig import ConvertConfig
+from src.PipelineConverter import PipelineConverter
 from src.Version import Version
 
 
@@ -120,7 +120,8 @@ class CommandLineInterface:
             "--split-by-periods",
             type=lambda x: x.lower() == "true",
             default=False,
-            help="Generate separate folders per service period (weekday/saturday/sunday) (default: false)",
+            help="Generate separate folders per service period "
+                 "(weekday/saturday/sunday) (default: false)",
         )
         convert_parser.set_defaults(func=CommandLineInterface.cmd_convert)
 
