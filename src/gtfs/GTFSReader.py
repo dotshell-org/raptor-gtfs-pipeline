@@ -183,6 +183,7 @@ class GTFSReader:
 
         df = df.sort_values("stop_id").reset_index(drop=True)
 
+        self.stops = []
         for idx, row in df.iterrows():
             i = int(idx)  # type: ignore[arg-type]
             self.stop_id_map[row["stop_id"]] = i
@@ -215,6 +216,7 @@ class GTFSReader:
 
         df = df.sort_values("route_id").reset_index(drop=True)
 
+        self.routes = []
         for idx, row in df.iterrows():
             i = int(idx)  # type: ignore[arg-type]
             self.route_id_map[row["route_id"]] = i
@@ -247,7 +249,8 @@ class GTFSReader:
         self.trip_id_map = dict(zip(df["trip_id"], df["trip_id_internal"].astype(int)))
         self.internal_to_trip = dict(zip(df["trip_id_internal"].astype(int), df["trip_id"]))
 
-        # Build Pydantic models
+        # Build Pydantic models (for compatibility if needed, though mostly use df)
+        self.trips = []
         for _, row in df.iterrows():
             self.trips.append(Trip(
                 trip_id=row["trip_id"],
@@ -322,6 +325,10 @@ class GTFSReader:
             errors="coerce",
         ).fillna(0).astype(int)
 
+        self.transfers_df = df[["from_stop_id", "to_stop_id", "_min_time"]].copy()
+
+        # Build models for compatibility
+        self.transfers = []
         for _, row in df.iterrows():
             self.transfers.append(Transfer(
                 from_stop_id=row["from_stop_id"],

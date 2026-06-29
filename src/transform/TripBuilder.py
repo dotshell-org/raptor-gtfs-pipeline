@@ -24,11 +24,8 @@ class TripBuilder:
         trips_df = reader.trips_df
 
         # Pre-index: route_id → list of (trip_id_gtfs, trip_id_internal)
-        trips_by_route: dict[str, list[tuple[str, int]]] = {}
-        for _, row in trips_df.iterrows():
-            trips_by_route.setdefault(str(row["route_id"]), []).append(
-                (str(row["trip_id"]), int(row["trip_id_internal"]))
-            )
+        # Optimization: group by route_id once using Pandas
+        route_groups = trips_df.groupby("route_id")
 
         total_trips = 0
 
@@ -36,15 +33,14 @@ class TripBuilder:
             route_id_gtfs = route.route_id_gtfs
             canonical_stops = route.stop_ids  # list[int] of stop_id_internal
 
-            route_trip_pairs = trips_by_route.get(route_id_gtfs, [])
-            if not route_trip_pairs:
+            try:
+                route_trips = route_groups.get_group(route_id_gtfs)
+            except KeyError:
                 continue
 
-            trip_internal_ids = [tid_int for _, tid_int in route_trip_pairs]
+            trip_internal_ids = route_trips["trip_id_internal"].tolist()
             # Map trip_id_internal → trip_id_gtfs for warning messages
-            int_to_gtfs: dict[int, str] = {
-                tid_int: tid_gtfs for tid_gtfs, tid_int in route_trip_pairs
-            }
+            int_to_gtfs = dict(zip(route_trips["trip_id_internal"], route_trips["trip_id"]))
 
             # Filter stop_times to this route's trips
             route_st = st_df[st_df["trip_id_internal"].isin(trip_internal_ids)]

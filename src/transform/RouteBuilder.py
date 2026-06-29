@@ -34,10 +34,11 @@ class RouteBuilder:
         }
 
         # Group trips by (route_id, direction_id) using DataFrame groupby
-        trips_by_route_dir: dict[tuple[str, int], list[str]] = {}
-        for _, row in trips_df.iterrows():
-            key = (str(row["route_id"]), int(row["direction_id"]))
-            trips_by_route_dir.setdefault(key, []).append(str(row["trip_id"]))
+        trips_by_route_dir = (
+            trips_df.groupby(["route_id", "direction_id"])["trip_id"]
+            .apply(list)
+            .to_dict()
+        )
 
         routes: list[RouteData] = []
 

@@ -25,19 +25,22 @@ class TransferBuilder:
 
         gtfs_to_internal = {stop.stop_id_gtfs: stop.stop_id_internal for stop in stops}
 
-        for transfer in reader.transfers:
-            from_stop_id = gtfs_to_internal.get(transfer.from_stop_id)
-            to_stop_id = gtfs_to_internal.get(transfer.to_stop_id)
+        if hasattr(reader, "transfers_df"):
+            df = reader.transfers_df
+            # Join with internal IDs
+            df = df.copy()
+            df["from_int"] = df["from_stop_id"].map(gtfs_to_internal)
+            df["to_int"] = df["to_stop_id"].map(gtfs_to_internal)
 
-            if from_stop_id is None or to_stop_id is None:
-                logger.warning(
-                    f"Transfer references unknown stops: "
-                    f"{transfer.from_stop_id} -> {transfer.to_stop_id}"
-                )
-                continue
+            # Drop transfers to unknown stops
+            valid = df.dropna(subset=["from_int", "to_int"])
+            if len(valid) < len(df):
+                logger.warning(f"Dropped {len(df) - len(valid)} transfers referencing unknown stops")
 
-            from_stop = stops[from_stop_id]
-            from_stop.transfers.append((to_stop_id, transfer.min_transfer_time))
+            for _, row in valid.iterrows():
+                from_id = int(row["from_int"])
+                to_id = int(row["to_int"])
+                stops[from_id].transfers.append((to_id, int(row["_min_time"])))
 
         if gen_transfers:
             logger.info(
