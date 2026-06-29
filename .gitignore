@@ -55,6 +55,7 @@ raptor_data/
 Thumbs.db
 
 # GTFS source files (too large for git)
+*.zip
 profiles/gtfs/*.zip
 profiles/gtfs/*/
 
