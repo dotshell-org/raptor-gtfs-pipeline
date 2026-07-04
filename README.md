@@ -126,6 +126,39 @@ uv run raptor-gtfs convert --input /path/to/gtfs --output ./raptor_data --traces
 - Coordinates are stored as delta-encoded fixed-point integers, so the
   over-sampled shape geometry stays small.
 
+## Dataset index (`dataset.json`)
+
+Every run writes a self-describing `dataset.json` at the output root, so a
+consumer can discover what was produced without guessing folder names:
+
+```json
+{
+  "schema_version": 2,
+  "tool_version": "0.2.0",
+  "created_at": "...",
+  "input": { "gtfs_path": "..." },
+  "layout": "flat",              // flat | nested | single
+  "lines": { "file": "lines.bin", "coord_scale": 1000000 },  // null if no --traces
+  "periods": [
+    {
+      "name": "saturday",
+      "description": "Saturday service",
+      "files": {                 // paths relative to the output root
+        "routes": "routes_saturday.bin",
+        "stops": "stops_saturday.bin",
+        "index": "index_saturday.bin"
+      },
+      "checksums": { "routes_saturday.bin": "sha256…", "…": "…" },
+      "stats": { "stops": 2745, "routes": 244, "trips": 20843, "…": 0 }
+    }
+  ]
+}
+```
+
+`files` paths adapt to the layout (`routes_saturday.bin` when `--flat`,
+`saturday/routes.bin` when nested). Read `dataset.json` to locate each period's
+files instead of hardcoding names.
+
 ## Binary Format Specification
 
 ### routes.bin (v2)

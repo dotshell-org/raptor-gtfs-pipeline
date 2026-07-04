@@ -15,7 +15,7 @@ from src.gtfs.models.ServicePeriod import ServicePeriod
 from src.optimization.NetworkIndexBuilder import NetworkIndexBuilder
 from src.output.BinarySerializer import BinarySerializer
 from src.output.JsonSerializer import JsonSerializer
-from src.output.LinesSerializer import LinesSerializer
+from src.output.LinesSerializer import COORD_SCALE, LinesSerializer
 from src.transform.LineGeometryBuilder import LineGeometryBuilder
 from src.transform.RouteBuilder import RouteBuilder
 from src.transform.StopBuilder import StopBuilder
@@ -77,6 +77,7 @@ class PipelineConverter:
 
         # Line geometry is period-independent → build & write lines.bin ONCE at the
         # output root (a sibling of any per-period folders).
+        lines_written = False
         if config.gen_traces:
             reader.read_shapes()
             lines = LineGeometryBuilder.build_lines(reader)
@@ -84,6 +85,7 @@ class PipelineConverter:
                 LinesSerializer.write_lines_file(
                     Path(output_path), lines, Version.SCHEMA_VERSION
                 )
+                lines_written = True
             else:
                 logger.warning(
                     "--traces requested but no usable shapes.txt geometry was found; "
@@ -93,6 +95,7 @@ class PipelineConverter:
         # If splitting by periods, generate one folder per period
         if periods:
             manifests = []
+            period_manifests: list[tuple[ServicePeriod, Manifest]] = []
             base_output = Path(output_path)
 
             for period in periods:
@@ -135,6 +138,12 @@ class PipelineConverter:
                     suffix=period_suffix,
                 )
                 manifests.append(manifest)
+                period_manifests.append((period, manifest))
+
+            # Write the self-describing root index over all periods
+            PipelineConverter._write_root_index(
+                base_output, config, period_manifests, lines_written, input_path, start_time
+            )
 
             # Return summary manifest
             logger.info(f"\n{'=' * 60}")
@@ -146,7 +155,7 @@ class PipelineConverter:
             return manifests[0]  # Return first manifest for backward compatibility
         else:
             # Single output (original behavior)
-            return PipelineConverter._write_period_output(
+            single_manifest = PipelineConverter._write_period_output(
                 reader=reader,
                 routes=routes,
                 output_path=Path(output_path),
@@ -155,6 +164,75 @@ class PipelineConverter:
                 input_path=input_path,
                 period_name=None,
             )
+            single_period = ServicePeriod(name="all", description="Complete dataset")
+            PipelineConverter._write_root_index(
+                Path(output_path), config, [(single_period, single_manifest)],
+                lines_written, input_path, start_time,
+            )
+            return single_manifest
+
+    @staticmethod
+    def _write_root_index(
+        base_output: Path,
+        config: ConvertConfig,
+        period_manifests: list[tuple[ServicePeriod, Manifest]],
+        lines_written: bool,
+        input_path: str,
+        start_time: datetime,
+    ) -> None:
+        """Write a self-describing dataset.json at the output root.
+
+        Lets a consumer discover the produced periods, their files (paths
+        relative to the root) and checksums without guessing folder names.
+        Named 'dataset' to avoid clashing with the per-period index.bin /
+        index.json (RAPTOR network index) and manifest.json.
+        """
+        if config.flat_output:
+            layout = "flat"
+        elif len(period_manifests) == 1 and period_manifests[0][0].name == "all":
+            layout = "single"
+        else:
+            layout = "nested"
+
+        def rel_path(period_name: str, filename: str) -> str:
+            # Nested layout stores files under <period>/; flat/single keep them at root.
+            return f"{period_name}/{filename}" if layout == "nested" else filename
+
+        periods_index = []
+        for period, manifest in period_manifests:
+            files = {
+                kind: rel_path(period.name, fname)
+                for kind in ("routes", "stops", "index")
+                for fname in manifest.outputs
+                if fname.startswith(kind) and fname.endswith(".bin")
+            }
+            periods_index.append({
+                "name": period.name,
+                "description": period.description,
+                "files": files,
+                "checksums": {
+                    rel_path(period.name, fname): sha
+                    for fname, sha in manifest.outputs.items()
+                },
+                "stats": manifest.stats,
+            })
+
+        index = {
+            "schema_version": Version.SCHEMA_VERSION,
+            "tool_version": Version.VERSION,
+            "created_at": start_time.isoformat(),
+            "input": {"gtfs_path": input_path},
+            "layout": layout,
+            "lines": (
+                {"file": "lines.bin", "coord_scale": COORD_SCALE} if lines_written else None
+            ),
+            "periods": periods_index,
+        }
+
+        index_path = base_output / "dataset.json"
+        with open(index_path, "w", encoding="utf-8") as f:
+            json.dump(index, f, indent=2, sort_keys=True)
+        logger.info(f"Wrote dataset index to {index_path}")
 
     @staticmethod
     def _resolve_periods(
