@@ -172,6 +172,9 @@ raptor_data/
    └─ lines.bin            # when --traces
 ```
 
+Add `--no-index` to skip `index.bin` when the consumer only loads stops/routes
+(smaller assets); `dataset.json` adapts and drops the `index` entry.
+
 ## Binary Format Specification
 
 ### routes.bin (v2)

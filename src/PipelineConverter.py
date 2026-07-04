@@ -350,14 +350,15 @@ class PipelineConverter:
             files_written.update(
                 BinarySerializer.write_binary_files(
                     output_dir, routes, stops, index, Version.SCHEMA_VERSION,
-                    config.compression, suffix=suffix,
+                    config.compression, suffix=suffix, write_index=config.write_index,
                 )
             )
 
         if config.format in ("json", "both") or config.debug_json:
             files_written.update(
                 JsonSerializer.write_json_files(
-                    output_dir, routes, stops, index, suffix=suffix
+                    output_dir, routes, stops, index, suffix=suffix,
+                    write_index=config.write_index,
                 )
             )
 

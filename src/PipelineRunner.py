@@ -37,6 +37,7 @@ class PipelineRunner:
         dry_run: bool = False,
         profile: str | None = None,
         flat_output: bool = False,
+        write_index: bool = True,
         verbose: bool = False,
     ) -> None:
         """Run the generic conversion pipeline, extracting ZIP files if necessary."""
@@ -86,6 +87,7 @@ class PipelineRunner:
                 gen_traces=gen_traces,
                 dry_run=dry_run,
                 flat_output=flat_output,
+                write_index=write_index,
             )
 
             manifest = PipelineConverter.convert(
@@ -167,6 +169,11 @@ class PipelineRunner:
                  "(raptor/routes_<period>.bin) instead of subfolders",
         )
         parser.add_argument(
+            "--no-index",
+            action="store_true",
+            help="Skip index.bin (consumers that only load stops/routes don't need it)",
+        )
+        parser.add_argument(
             "-v",
             "--verbose",
             action="store_true",
@@ -186,6 +193,7 @@ class PipelineRunner:
             dry_run=args.dry_run,
             profile=args.profile,
             flat_output=args.flat,
+            write_index=not args.no_index,
             verbose=args.verbose,
         )
 

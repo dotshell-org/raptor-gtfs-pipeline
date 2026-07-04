@@ -19,10 +19,12 @@ class JsonSerializer:
         stops: list[StopData],
         index: NetworkIndex,
         suffix: str = "",
+        write_index: bool = True,
     ) -> dict[str, str]:
         """Write debug JSON files.
 
         ``suffix`` is appended before the extension (mirrors the flat binary layout).
+        ``write_index`` controls whether index.json is emitted.
         """
         logger.debug(f"Writing debug JSON files to {output_path}")
 
@@ -86,24 +88,26 @@ class JsonSerializer:
         files_written[stops_name] = str(stops_path)
         logger.debug(f"Wrote {stops_path}")
 
-        # Write index.json
-        index_data = {
-            "stop_to_routes": {
-                str(stop_id): routes_list for stop_id, routes_list in index.stop_to_routes.items()
-            },
-            "route_offsets": {
-                str(route_id): offset for route_id, offset in index.route_offsets.items()
-            },
-            "stop_offsets": {
-                str(stop_id): offset for stop_id, offset in index.stop_offsets.items()
-            },
-        }
+        # Write index.json (optional)
+        if write_index:
+            index_data = {
+                "stop_to_routes": {
+                    str(stop_id): routes_list
+                    for stop_id, routes_list in index.stop_to_routes.items()
+                },
+                "route_offsets": {
+                    str(route_id): offset for route_id, offset in index.route_offsets.items()
+                },
+                "stop_offsets": {
+                    str(stop_id): offset for stop_id, offset in index.stop_offsets.items()
+                },
+            }
 
-        index_name = f"index{suffix}.json"
-        index_path = output_path / index_name
-        with open(index_path, "w", encoding="utf-8") as f:
-            json.dump(index_data, f, indent=2, sort_keys=True)
-        files_written[index_name] = str(index_path)
-        logger.debug(f"Wrote {index_path}")
+            index_name = f"index{suffix}.json"
+            index_path = output_path / index_name
+            with open(index_path, "w", encoding="utf-8") as f:
+                json.dump(index_data, f, indent=2, sort_keys=True)
+            files_written[index_name] = str(index_path)
+            logger.debug(f"Wrote {index_path}")
 
         return files_written

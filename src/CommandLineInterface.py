@@ -48,6 +48,7 @@ class CommandLineInterface:
             gen_traces=args.traces,
             dry_run=args.dry_run,
             flat_output=args.flat,
+            write_index=not args.no_index,
         )
 
         try:
@@ -161,6 +162,11 @@ class CommandLineInterface:
             action="store_true",
             help="Group app-ready per-period files under raptor/ "
                  "(raptor/routes_<period>.bin) instead of <period>/routes.bin subfolders",
+        )
+        convert_parser.add_argument(
+            "--no-index",
+            action="store_true",
+            help="Skip index.bin (consumers that only load stops/routes don't need it)",
         )
         convert_parser.set_defaults(func=CommandLineInterface.cmd_convert)
 

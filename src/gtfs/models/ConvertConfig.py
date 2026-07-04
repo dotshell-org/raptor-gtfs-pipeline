@@ -18,3 +18,4 @@ class ConvertConfig(BaseModel):
     gen_traces: bool = False  # Generate line geometry (lines.bin) from shapes.txt
     dry_run: bool = False  # Print the period plan without writing any files
     flat_output: bool = False  # Flat per-period files (routes_<period>.bin) vs subfolders
+    write_index: bool = True  # Write index.bin/.json (disable with --no-index)

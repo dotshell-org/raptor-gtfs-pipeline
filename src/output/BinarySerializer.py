@@ -23,11 +23,13 @@ class BinarySerializer:
         schema_version: int,
         compression: bool = True,
         suffix: str = "",
+        write_index: bool = True,
     ) -> dict[str, str]:
         """Write all binary files and return filenames.
 
         ``suffix`` is appended before the extension (e.g. ``_saturday``) for the
         flat, per-period app layout: ``routes_saturday.bin`` instead of nesting.
+        ``write_index`` controls whether index.bin is emitted.
         """
         logger.debug(f"Writing binary files to {output_path}")
 
@@ -63,15 +65,16 @@ class BinarySerializer:
         files_written[stops_name] = str(stops_path)
         logger.debug(f"Wrote {stops_path}")
 
-        # Write index.bin
-        index_name = f"index{suffix}.bin"
-        index_path = output_path / index_name
-        with open(index_path, "wb") as f:
-            index_writer = IndexWriter(f)
-            index_writer.write_header(schema_version)
-            index_writer.write_index(index)
+        # Write index.bin (optional)
+        if write_index:
+            index_name = f"index{suffix}.bin"
+            index_path = output_path / index_name
+            with open(index_path, "wb") as f:
+                index_writer = IndexWriter(f)
+                index_writer.write_header(schema_version)
+                index_writer.write_index(index)
 
-        files_written[index_name] = str(index_path)
-        logger.debug(f"Wrote {index_path}")
+            files_written[index_name] = str(index_path)
+            logger.debug(f"Wrote {index_path}")
 
         return files_written
