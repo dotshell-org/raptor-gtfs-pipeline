@@ -84,8 +84,12 @@ class GTFSReader:
     # Public API
     # ------------------------------------------------------------------
 
-    def read_all(self) -> None:
-        """Read all GTFS files."""
+    def read_all(self, skip_stop_times: bool = False) -> None:
+        """Read all GTFS files.
+
+        ``skip_stop_times`` skips the expensive stop_times/transfers read — used by
+        ``--dry-run``, which only needs calendar/trips to preview the period plan.
+        """
         logger.info(f"Reading GTFS data from {self.gtfs_path}")
         self.read_agencies()
         self.read_stops()
@@ -93,8 +97,9 @@ class GTFSReader:
         self.read_calendar()
         self.read_calendar_dates()
         self.read_trips()
-        self.read_stop_times()
-        self.read_transfers()
+        if not skip_stop_times:
+            self.read_stop_times()
+            self.read_transfers()
         logger.info(
             f"Loaded {len(self.stops)} stops, {len(self.routes)} routes, "
             f"{len(self.trips)} trips, {len(self.stop_times_df)} stop_times, "

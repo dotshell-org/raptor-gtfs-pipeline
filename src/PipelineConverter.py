@@ -56,25 +56,17 @@ class PipelineConverter:
         logger.info(f"Starting conversion: {input_path} -> {output_path}")
         start_time = datetime.now(UTC)
 
-        # Read GTFS
+        # Read GTFS (dry-run only needs calendar/trips to preview the plan)
         reader = GTFSReader(input_path)
-        reader.read_all()
+        reader.read_all(skip_stop_times=config.dry_run)
 
-        # Check if we should split by service periods
-        periods: list[ServicePeriod] | None = None
-        if config.split_by_periods:
-            if period_analyzer:
-                logger.info("Using custom period analyzer")
-                periods = period_analyzer(reader)
-            else:
-                periods = CalendarAnalyzer.analyze_service_periods(reader)
+        # Resolve service periods (used by both split output and --dry-run)
+        periods = PipelineConverter._resolve_periods(reader, config, period_analyzer)
 
-            if not periods:
-                logger.warning(
-                    "split_by_periods enabled but no calendar data found, "
-                    "generating single output"
-                )
-                periods = None
+        if config.dry_run:
+            return PipelineConverter._print_dry_run_plan(
+                reader, periods, input_path, start_time
+            )
 
         # Build routes and trips ONCE (optimization for period splitting)
         logger.info("Building routes and trips from GTFS data...")
@@ -153,6 +145,71 @@ class PipelineConverter:
                 input_path=input_path,
                 period_name=None,
             )
+
+    @staticmethod
+    def _resolve_periods(
+        reader: GTFSReader,
+        config: ConvertConfig,
+        period_analyzer: Callable[[GTFSReader], list[ServicePeriod]] | None,
+    ) -> list[ServicePeriod] | None:
+        """Compute service periods when splitting (or previewing via --dry-run)."""
+        if not (config.split_by_periods or config.dry_run):
+            return None
+        if period_analyzer:
+            logger.info("Using custom period analyzer")
+            periods = period_analyzer(reader)
+        else:
+            periods = CalendarAnalyzer.analyze_service_periods(reader)
+        if not periods:
+            logger.warning(
+                "Period splitting requested but no calendar data found; "
+                "generating a single output"
+            )
+            return None
+        return periods
+
+    @staticmethod
+    def _print_dry_run_plan(
+        reader: GTFSReader,
+        periods: list[ServicePeriod] | None,
+        input_path: str,
+        start_time: datetime,
+    ) -> Manifest:
+        """Print the period plan (names, #services, #trips) without writing files."""
+        trip_counts: dict[str, int] = {}
+        if not reader.trips_df.empty:
+            trip_counts = {
+                str(sid): int(n)
+                for sid, n in reader.trips_df.groupby("service_id").size().items()
+            }
+
+        print("\nDry run — no files were written.")
+        print(f"Input: {input_path}")
+        if not periods:
+            print("Period split: none — a single output would be generated.")
+            period_count = 0
+        else:
+            print(f"Would generate {len(periods)} period folder(s):")
+            for period in periods:
+                n_trips = sum(trip_counts.get(sid, 0) for sid in period.service_ids)
+                print(
+                    f"  {period.name:<22} {len(period.service_ids):>4} service(s)"
+                    f"  {n_trips:>8} trips   {period.description}"
+                )
+            period_count = len(periods)
+
+        return Manifest(
+            schema_version=Version.SCHEMA_VERSION,
+            tool_version=Version.VERSION,
+            created_at_iso=start_time.isoformat(),
+            inputs={"gtfs_path": input_path, "dry_run": True},
+            outputs={},
+            stats={"periods": period_count},
+            build={
+                "python": platform.python_version(),
+                "platform": platform.platform(),
+            },
+        )
 
     @staticmethod
     def _write_period_output(

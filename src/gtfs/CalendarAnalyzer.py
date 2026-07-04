@@ -102,38 +102,39 @@ class CalendarAnalyzer:
             )
             del patterns[allweek_pattern]
         
-        # Handle remaining patterns with generic names
-        for idx, (pat, service_ids) in enumerate(sorted(patterns.items()), start=1):
-            days_active = [
-                day
-                for day, active in zip(
-                    ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], pat
-                )
-                if active
-            ]
-            name = f"custom_{idx}"
-            description = f"Service on: {', '.join(days_active)}"
+        # Everything that didn't match a standard day-type goes into a single
+        # "other" bucket — never dozens of numbered custom_N folders.
+        if patterns:
+            other_service_ids: list[str] = []
+            for _pattern, service_ids in sorted(patterns.items()):
+                other_service_ids.extend(service_ids)
             periods.append(
                 ServicePeriod(
-                    name=name,
-                    service_ids=service_ids,
-                    description=description,
+                    name="other",
+                    service_ids=other_service_ids,
+                    description=(
+                        f"{len(patterns)} non-standard weekly pattern(s), "
+                        f"{len(other_service_ids)} service(s) — "
+                        "pass a profile (--profile) to classify these"
+                    ),
                 )
             )
         
         # If no calendar.txt, but calendar_dates.txt exists, group by service_id
         if not periods and reader.calendar_dates:
-            logger.info("No calendar.txt found, grouping by service_id from calendar_dates.txt")
+            logger.warning(
+                "No calendar.txt found — grouping all calendar_dates services into "
+                "'other'; pass a profile (--profile) to split them meaningfully"
+            )
             services_from_dates = {cd.service_id for cd in reader.calendar_dates}
             
-            for service_id in sorted(services_from_dates):
-                periods.append(
-                    ServicePeriod(
-                        name=service_id,
-                        service_ids=[service_id],
-                        description=f"Service: {service_id}",
-                    )
+            periods.append(
+                ServicePeriod(
+                    name="other",
+                    service_ids=sorted(services_from_dates),
+                    description=f"{len(services_from_dates)} service(s) from calendar_dates.txt",
                 )
+            )
         
         logger.info(f"Identified {len(periods)} service periods")
         for period in periods:
