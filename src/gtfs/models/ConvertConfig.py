@@ -15,3 +15,6 @@ class ConvertConfig(BaseModel):
     transfer_cutoff: int = 500  # meters
     jobs: int = 1
     split_by_periods: bool = False  # Generate separate folders per service period
+    gen_traces: bool = False  # Generate line geometry (lines.bin) from shapes.txt
+    dry_run: bool = False  # Print the period plan without writing any files
+    flat_output: bool = False  # Flat per-period files (routes_<period>.bin) vs subfolders

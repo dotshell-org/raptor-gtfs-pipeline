@@ -15,6 +15,8 @@ from src.gtfs.models.ServicePeriod import ServicePeriod
 from src.optimization.NetworkIndexBuilder import NetworkIndexBuilder
 from src.output.BinarySerializer import BinarySerializer
 from src.output.JsonSerializer import JsonSerializer
+from src.output.LinesSerializer import LinesSerializer
+from src.transform.LineGeometryBuilder import LineGeometryBuilder
 from src.transform.RouteBuilder import RouteBuilder
 from src.transform.StopBuilder import StopBuilder
 from src.transform.TransferBuilder import TransferBuilder
@@ -80,6 +82,21 @@ class PipelineConverter:
         TripBuilder.build_and_sort_trips(reader, routes, allow_partial=config.allow_partial_trips)
         total_trips = sum(len(r.trips) for r in routes)
         logger.info(f"Built {len(routes)} routes with {total_trips} trips total")
+
+        # Line geometry is period-independent → build & write lines.bin ONCE at the
+        # output root (a sibling of any per-period folders).
+        if config.gen_traces:
+            reader.read_shapes()
+            lines = LineGeometryBuilder.build_lines(reader)
+            if lines:
+                LinesSerializer.write_lines_file(
+                    Path(output_path), lines, Version.SCHEMA_VERSION
+                )
+            else:
+                logger.warning(
+                    "--traces requested but no usable shapes.txt geometry was found; "
+                    "skipping lines.bin"
+                )
 
         # If splitting by periods, generate one folder per period
         if periods:

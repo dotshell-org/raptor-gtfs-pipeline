@@ -49,6 +49,9 @@ class GTFSReader:
         self.stop_times_df: pd.DataFrame = pd.DataFrame()
         self.trips_df: pd.DataFrame = pd.DataFrame()
 
+        # Ordered shape geometry (optional): shape_id -> [(lon, lat), ...]
+        self.shapes_points: dict[str, list[tuple[float, float]]] = {}
+
     # ------------------------------------------------------------------
     # Core I/O
     # ------------------------------------------------------------------
@@ -226,6 +229,8 @@ class GTFSReader:
                 route_short_name=row.get("route_short_name", ""),
                 route_long_name=row.get("route_long_name", ""),
                 route_type=int(row["_route_type"]),
+                route_color=row.get("route_color", ""),
+                route_text_color=row.get("route_text_color", ""),
             ))
 
     def read_trips(self) -> None:
@@ -241,6 +246,10 @@ class GTFSReader:
                 df["direction_id"].replace("", "0"), errors="coerce"
             ).fillna(0).astype(int)
         )
+
+        # shape_id is optional in GTFS; keep it for line geometry when present.
+        if "shape_id" not in df.columns:
+            df["shape_id"] = ""
 
         df = df.sort_values("trip_id").reset_index(drop=True)
         df["trip_id_internal"] = df.index
@@ -259,9 +268,9 @@ class GTFSReader:
                 direction_id=int(row["direction_id"]),
             ))
 
-        # Expose DataFrame for TripBuilder / RouteBuilder
+        # Expose DataFrame for TripBuilder / RouteBuilder / LineGeometryBuilder
         self.trips_df = df[
-            ["trip_id", "route_id", "service_id", "direction_id", "trip_id_internal"]
+            ["trip_id", "route_id", "service_id", "direction_id", "shape_id", "trip_id_internal"]
         ].copy()
 
     def read_stop_times(self) -> None:
@@ -335,6 +344,41 @@ class GTFSReader:
                 to_stop_id=row["to_stop_id"],
                 min_transfer_time=int(row["_min_time"]),
             ))
+
+    def read_shapes(self) -> None:
+        """Read shapes.txt (optional) into an ordered points dict for line geometry.
+
+        Populates ``shapes_points`` as ``shape_id -> [(lon, lat), ...]`` sorted by
+        ``shape_pt_sequence``. Missing file leaves ``shapes_points`` empty (no traces).
+        """
+        df = self._read_df("shapes.txt", required=False)
+        if df.empty:
+            logger.info("shapes.txt not found — no line geometry available")
+            return
+
+        df["_lat"] = pd.to_numeric(df["shape_pt_lat"].str.strip(), errors="coerce")
+        df["_lon"] = pd.to_numeric(df["shape_pt_lon"].str.strip(), errors="coerce")
+        df["_seq"] = pd.to_numeric(df["shape_pt_sequence"].str.strip(), errors="coerce")
+
+        invalid = df["_lat"].isna() | df["_lon"].isna() | df["_seq"].isna()
+        if invalid.any():
+            logger.debug(f"{int(invalid.sum())} shape points with invalid data, skipping")
+            df = df[~invalid]
+        if df.empty:
+            return
+
+        df["_seq"] = df["_seq"].astype(int)
+        df = df.sort_values(["shape_id", "_seq"])
+
+        self.shapes_points = {}
+        for shape_id, group in df.groupby("shape_id", sort=False):
+            self.shapes_points[str(shape_id)] = list(
+                zip(
+                    group["_lon"].astype(float).tolist(),
+                    group["_lat"].astype(float).tolist(),
+                )
+            )
+        logger.info(f"Loaded {len(self.shapes_points)} shapes")
 
     # ------------------------------------------------------------------
     # Lookup helpers (unchanged public API)

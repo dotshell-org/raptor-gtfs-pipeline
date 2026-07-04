@@ -64,6 +64,22 @@ The pipeline:
 - **Clear separation**: Easy to select the right data for a given day
 - **Flexible**: Automatically adapts to your GTFS calendar structure
 
+## Line Geometry (optional)
+
+Add `--traces` to also extract each line's shape as compact binary geometry
+(`lines.bin`), on top of the RAPTOR routing data:
+
+```bash
+uv run raptor-gtfs convert --input /path/to/gtfs --output ./raptor_data --traces
+```
+
+- Reads `shapes.txt`, keeps the **longest shape per direction** for every route,
+  and writes a single `lines.bin` at the output root.
+- **No-op if the feed has no `shapes.txt`** (a warning is logged; the routing
+  data is still produced) — this is why it is opt-in.
+- Coordinates are stored as delta-encoded fixed-point integers, so the
+  over-sampled shape geometry stays small.
+
 ## Binary Format Specification
 
 ### routes.bin (v2)
@@ -109,6 +125,37 @@ For each stop:
     For each transfer:
       target_stop_id: uint32
       walk_time: int32
+```
+
+### lines.bin (v2, optional — `--traces`)
+
+Written once at the output **root** (line geometry is period-independent, so it
+is a sibling of any per-period folders). Only produced when `--traces` is passed
+and the feed has a `shapes.txt`.
+
+```
+Header:
+  magic: b"RLN2" (4 bytes)
+  schema_version: uint16 (= 2)
+  coord_scale: uint32 (fixed-point divisor, e.g. 1000000)
+  line_count: uint32
+
+For each line:
+  line_id_internal: uint32          (GTFS route index)
+  name_length: uint16 + name: UTF-8 (route_short_name)
+  color_length: uint16 + color: UTF-8       (GTFS route_color hex, may be empty)
+  text_color_length: uint16 + text_color: UTF-8
+  transport_type: uint16            (raw GTFS route_type)
+  path_count: uint16                (one path per direction)
+  For each path:
+    direction_id: uint16
+    point_count: uint32
+    lon: point_count × int32   (fixed-point round(lon*coord_scale), delta-encoded)
+    lat: point_count × int32   (fixed-point round(lat*coord_scale), delta-encoded)
+
+Geometry per line/direction = the longest shape (most points) of that direction.
+Delta encoding: first value absolute, subsequent values are deltas. Decode a
+coordinate as value / coord_scale. Points are [lon, lat] (GeoJSON axis order).
 ```
 
 ### index.bin
