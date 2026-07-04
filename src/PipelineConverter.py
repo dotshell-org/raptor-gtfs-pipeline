@@ -114,15 +114,25 @@ class PipelineConverter:
                     f"After filtering: {len(filtered_routes)} routes with trips in this period"
                 )
 
+                # Flat layout writes routes_<period>.bin at the root (app convention);
+                # nested layout writes <period>/routes.bin.
+                if config.flat_output:
+                    period_output = base_output
+                    period_suffix = f"_{period.name}"
+                else:
+                    period_output = base_output / period.name
+                    period_suffix = ""
+
                 # Generate output for this period
                 manifest = PipelineConverter._write_period_output(
                     reader=reader,
                     routes=filtered_routes,
-                    output_path=base_output / period.name,
+                    output_path=period_output,
                     config=config,
                     start_time=start_time,
                     input_path=input_path,
                     period_name=period.name,
+                    suffix=period_suffix,
                 )
                 manifests.append(manifest)
 
@@ -220,9 +230,13 @@ class PipelineConverter:
         start_time: datetime,
         input_path: str,
         period_name: str | None,
+        suffix: str = "",
     ) -> Manifest:
         """
         Write output files for a specific period (or all data).
+
+        ``suffix`` (e.g. ``_saturday``) produces the flat app layout
+        (``routes_saturday.bin`` at the root) instead of a per-period subfolder.
         """
         # Build stops from the filtered routes
         stops = StopBuilder.build_stops(reader, routes)
@@ -242,22 +256,19 @@ class PipelineConverter:
         files_written: dict[str, str] = {}
 
         if config.format in ("binary", "both"):
-            BinarySerializer.write_binary_files(
-                output_dir, routes, stops, index, Version.SCHEMA_VERSION, config.compression
+            files_written.update(
+                BinarySerializer.write_binary_files(
+                    output_dir, routes, stops, index, Version.SCHEMA_VERSION,
+                    config.compression, suffix=suffix,
+                )
             )
-            files_written.update({
-                "routes.bin": str(output_dir / "routes.bin"),
-                "stops.bin": str(output_dir / "stops.bin"),
-                "index.bin": str(output_dir / "index.bin")
-            })
 
         if config.format in ("json", "both") or config.debug_json:
-            JsonSerializer.write_json_files(output_dir, routes, stops, index)
-            files_written.update({
-                "routes.json": str(output_dir / "routes.json"),
-                "stops.json": str(output_dir / "stops.json"),
-                "index.json": str(output_dir / "index.json")
-            })
+            files_written.update(
+                JsonSerializer.write_json_files(
+                    output_dir, routes, stops, index, suffix=suffix
+                )
+            )
 
         # Compute checksums
         checksums = {}
@@ -291,8 +302,8 @@ class PipelineConverter:
             },
         )
 
-        # Write manifest
-        manifest_path = output_dir / "manifest.json"
+        # Write manifest (suffixed in flat mode so periods don't overwrite each other)
+        manifest_path = output_dir / f"manifest{suffix}.json"
         with open(manifest_path, "w", encoding="utf-8") as f:
             json.dump(
                 {

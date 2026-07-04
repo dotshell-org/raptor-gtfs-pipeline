@@ -22,8 +22,13 @@ class BinarySerializer:
         index: NetworkIndex,
         schema_version: int,
         compression: bool = True,
+        suffix: str = "",
     ) -> dict[str, str]:
-        """Write all binary files and return filenames."""
+        """Write all binary files and return filenames.
+
+        ``suffix`` is appended before the extension (e.g. ``_saturday``) for the
+        flat, per-period app layout: ``routes_saturday.bin`` instead of nesting.
+        """
         logger.debug(f"Writing binary files to {output_path}")
 
         output_path.mkdir(parents=True, exist_ok=True)
@@ -31,7 +36,8 @@ class BinarySerializer:
         files_written = {}
 
         # Write routes.bin
-        routes_path = output_path / "routes.bin"
+        routes_name = f"routes{suffix}.bin"
+        routes_path = output_path / routes_name
         with open(routes_path, "wb") as f:
             writer = RoutesWriter(f)
             writer.write_header(schema_version, len(routes))
@@ -40,11 +46,12 @@ class BinarySerializer:
                 offset = writer.write_route(route, compression=compression)
                 index.route_offsets[route.route_id_internal] = offset
 
-        files_written["routes.bin"] = str(routes_path)
+        files_written[routes_name] = str(routes_path)
         logger.debug(f"Wrote {routes_path}")
 
         # Write stops.bin
-        stops_path = output_path / "stops.bin"
+        stops_name = f"stops{suffix}.bin"
+        stops_path = output_path / stops_name
         with open(stops_path, "wb") as f:
             stops_writer = StopsWriter(f)
             stops_writer.write_header(schema_version, len(stops))
@@ -53,17 +60,18 @@ class BinarySerializer:
                 offset = stops_writer.write_stop(stop)
                 index.stop_offsets[stop.stop_id_internal] = offset
 
-        files_written["stops.bin"] = str(stops_path)
+        files_written[stops_name] = str(stops_path)
         logger.debug(f"Wrote {stops_path}")
 
         # Write index.bin
-        index_path = output_path / "index.bin"
+        index_name = f"index{suffix}.bin"
+        index_path = output_path / index_name
         with open(index_path, "wb") as f:
             index_writer = IndexWriter(f)
             index_writer.write_header(schema_version)
             index_writer.write_index(index)
 
-        files_written["index.bin"] = str(index_path)
+        files_written[index_name] = str(index_path)
         logger.debug(f"Wrote {index_path}")
 
         return files_written

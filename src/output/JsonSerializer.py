@@ -18,8 +18,12 @@ class JsonSerializer:
         routes: list[RouteData],
         stops: list[StopData],
         index: NetworkIndex,
+        suffix: str = "",
     ) -> dict[str, str]:
-        """Write debug JSON files."""
+        """Write debug JSON files.
+
+        ``suffix`` is appended before the extension (mirrors the flat binary layout).
+        """
         logger.debug(f"Writing debug JSON files to {output_path}")
 
         output_path.mkdir(parents=True, exist_ok=True)
@@ -50,10 +54,11 @@ class JsonSerializer:
                 }
             )
 
-        routes_path = output_path / "routes.json"
+        routes_name = f"routes{suffix}.json"
+        routes_path = output_path / routes_name
         with open(routes_path, "w", encoding="utf-8") as f:
             json.dump(routes_data, f, indent=2, sort_keys=True)
-        files_written["routes.json"] = str(routes_path)
+        files_written[routes_name] = str(routes_path)
         logger.debug(f"Wrote {routes_path}")
 
         # Write stops.json
@@ -74,10 +79,11 @@ class JsonSerializer:
                 }
             )
 
-        stops_path = output_path / "stops.json"
+        stops_name = f"stops{suffix}.json"
+        stops_path = output_path / stops_name
         with open(stops_path, "w", encoding="utf-8") as f:
             json.dump(stops_data, f, indent=2, sort_keys=True)
-        files_written["stops.json"] = str(stops_path)
+        files_written[stops_name] = str(stops_path)
         logger.debug(f"Wrote {stops_path}")
 
         # Write index.json
@@ -93,10 +99,11 @@ class JsonSerializer:
             },
         }
 
-        index_path = output_path / "index.json"
+        index_name = f"index{suffix}.json"
+        index_path = output_path / index_name
         with open(index_path, "w", encoding="utf-8") as f:
             json.dump(index_data, f, indent=2, sort_keys=True)
-        files_written["index.json"] = str(index_path)
+        files_written[index_name] = str(index_path)
         logger.debug(f"Wrote {index_path}")
 
         return files_written

@@ -45,9 +45,55 @@ This will create separate folders:
 - `raptor_data/sunday/` - Sunday and holiday schedules
 - `raptor_data/weekend/` - Weekend schedules (if applicable)
 - `raptor_data/daily/` - Daily schedules (if applicable)
-- `raptor_data/custom_N/` - Custom patterns (if applicable)
+- `raptor_data/other/` - Any services that don't match a standard day-type
+  (a single bucket — the pipeline never emits dozens of numbered `custom_N`
+  folders; use a **profile** to classify these precisely)
 
 Each folder contains its own set of binary files (routes.bin, stops.bin, index.bin, manifest.json) with only the trips that operate during that service period.
+
+### Preview the plan (`--dry-run`)
+
+See exactly which period folders would be produced — without writing anything:
+
+```bash
+uv run raptor-gtfs convert --input /path/to/gtfs --split-by-periods true --dry-run
+```
+
+```
+Would generate 4 period folder(s):
+  saturday       19 service(s)   13148 trips   Saturday service
+  sunday         12 service(s)    7527 trips   Sunday service
+  weekday        45 service(s)   20843 trips   Weekday service (Mon–Fri)
+  other           7 service(s)    8079 trips   ...
+```
+
+### Profiles (`--profile`)
+
+The default splitter groups by exact weekly pattern, so feeds with many quirky
+calendars dump everything into `other`. A **declarative YAML profile** lets you
+say precisely which services go into which period (implies `--split-by-periods`):
+
+```bash
+uv run raptor-gtfs convert --input /path/to/gtfs --profile profiles/marseille.yaml
+```
+
+```yaml
+# profiles/lyon.yaml — a service matches a period when it satisfies ALL conditions
+network: lyon-tcl
+periods:
+  saturday:            { days: [sat] }
+  sunday:              { days: [sun] }
+  school_on_weekdays:  { days: [mon-fri], service_id_matches: "-M-$" }
+  school_off_weekdays: { days: [mon-fri], service_id_matches: "-[VW]-$" }
+unmatched: other       # or "warn" to log & drop unmatched services
+```
+
+- `days`: tokens `mon`..`sun`, ranges like `mon-fri`, aliases `weekdays` /
+  `weekend` / `daily`. A service matches if it runs on **any** of these days
+  (so a Mon–Sat service appears in both `weekday` and `saturday`).
+- `service_id_matches`: a regex searched against the `service_id`.
+- A service may match several periods. Combine with `--dry-run` to tune a profile
+  quickly. See `profiles/lyon.yaml` and `profiles/marseille.yaml`.
 
 ### How it works
 

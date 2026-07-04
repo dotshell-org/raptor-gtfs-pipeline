@@ -1,8 +1,10 @@
 import argparse
 import logging
 import sys
+from functools import partial
 
 from src.gtfs.models.ConvertConfig import ConvertConfig
+from src.gtfs.ProfileAnalyzer import ProfileAnalyzer
 from src.PipelineConverter import PipelineConverter
 from src.Version import Version
 
@@ -25,6 +27,12 @@ class CommandLineInterface:
         """Execute convert command."""
         CommandLineInterface.setup_logging(args.verbose)
 
+        # A declarative profile drives period splitting (and implies --split).
+        period_analyzer = None
+        if args.profile:
+            profile = ProfileAnalyzer.load(args.profile)
+            period_analyzer = partial(ProfileAnalyzer.build, profile)
+
         config = ConvertConfig(
             input_path=args.input,
             output_path=args.output,
@@ -36,14 +44,20 @@ class CommandLineInterface:
             speed_walk=args.speed_walk,
             transfer_cutoff=args.transfer_cutoff,
             jobs=args.jobs,
-            split_by_periods=args.split_by_periods,
+            split_by_periods=args.split_by_periods or bool(args.profile),
+            gen_traces=args.traces,
+            dry_run=args.dry_run,
+            flat_output=args.flat,
         )
 
         try:
-            manifest = PipelineConverter.convert(args.input, args.output, config)
-            print("\nConversion successful!")
-            print(f"Output: {args.output}")
-            print(f"Stats: {manifest.stats}")
+            manifest = PipelineConverter.convert(
+                args.input, args.output, config, period_analyzer=period_analyzer
+            )
+            if not args.dry_run:
+                print("\nConversion successful!")
+                print(f"Output: {args.output}")
+                print(f"Stats: {manifest.stats}")
             return 0
         except Exception as e:
             print(f"Error: {e}", file=sys.stderr)
@@ -122,6 +136,31 @@ class CommandLineInterface:
             default=False,
             help="Generate separate folders per service period "
                  "(weekday/saturday/sunday) (default: false)",
+        )
+        convert_parser.add_argument(
+            "--traces",
+            "--tracés",
+            dest="traces",
+            action="store_true",
+            help="Generate line geometry (lines.bin) from shapes.txt. "
+                 "No-op if the feed has no shapes.txt (default: off)",
+        )
+        convert_parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="Print the service-period plan (names, #services, #trips) "
+                 "without writing any files",
+        )
+        convert_parser.add_argument(
+            "--profile",
+            help="Path to a YAML period profile (implies --split-by-periods); "
+                 "see profiles/lyon.yaml and profiles/marseille.yaml",
+        )
+        convert_parser.add_argument(
+            "--flat",
+            action="store_true",
+            help="Flat per-period files at the output root "
+                 "(routes_<period>.bin) instead of <period>/routes.bin subfolders",
         )
         convert_parser.set_defaults(func=CommandLineInterface.cmd_convert)
 

@@ -3,9 +3,11 @@ import logging
 import shutil
 import tempfile
 import zipfile
+from functools import partial
 from pathlib import Path
 
 from src.gtfs.models.ConvertConfig import ConvertConfig
+from src.gtfs.ProfileAnalyzer import ProfileAnalyzer
 from src.PipelineConverter import PipelineConverter
 
 
@@ -31,6 +33,10 @@ class PipelineRunner:
         transfer_cutoff: int = 500,
         speed_walk: float = 1.33,
         allow_partial_trips: bool = False,
+        gen_traces: bool = False,
+        dry_run: bool = False,
+        profile: str | None = None,
+        flat_output: bool = False,
         verbose: bool = False,
     ) -> None:
         """Run the generic conversion pipeline, extracting ZIP files if necessary."""
@@ -61,6 +67,11 @@ class PipelineRunner:
             else:
                 actual_input = str(input_path)
 
+            period_analyzer = None
+            if profile:
+                loaded_profile = ProfileAnalyzer.load(profile)
+                period_analyzer = partial(ProfileAnalyzer.build, loaded_profile)
+
             config = ConvertConfig(
                 input_path=actual_input,
                 output_path=str(output_path),
@@ -71,10 +82,15 @@ class PipelineRunner:
                 transfer_cutoff=transfer_cutoff,
                 speed_walk=speed_walk,
                 allow_partial_trips=allow_partial_trips,
-                split_by_periods=split_by_periods,
+                split_by_periods=split_by_periods or bool(profile),
+                gen_traces=gen_traces,
+                dry_run=dry_run,
+                flat_output=flat_output,
             )
 
-            manifest = PipelineConverter.convert(actual_input, str(output_path), config)
+            manifest = PipelineConverter.convert(
+                actual_input, str(output_path), config, period_analyzer=period_analyzer
+            )
             logger.info("\nConversion successful!")
             logger.info(f"Output directory: {output_path}")
             logger.info(f"Stats: {manifest.stats}")
@@ -129,6 +145,28 @@ class PipelineRunner:
             help="Allow trips that do not serve all stops of a route",
         )
         parser.add_argument(
+            "--traces",
+            "--tracés",
+            dest="traces",
+            action="store_true",
+            help="Generate line geometry (lines.bin) from shapes.txt (default: off)",
+        )
+        parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="Print the service-period plan without writing any files",
+        )
+        parser.add_argument(
+            "--profile",
+            help="Path to a YAML period profile (implies split-by-periods)",
+        )
+        parser.add_argument(
+            "--flat",
+            action="store_true",
+            help="Flat per-period files at the root (routes_<period>.bin) "
+                 "instead of subfolders",
+        )
+        parser.add_argument(
             "-v",
             "--verbose",
             action="store_true",
@@ -144,6 +182,10 @@ class PipelineRunner:
             transfer_cutoff=args.transfer_cutoff,
             speed_walk=args.speed_walk,
             allow_partial_trips=args.allow_partial_trips,
+            gen_traces=args.traces,
+            dry_run=args.dry_run,
+            profile=args.profile,
+            flat_output=args.flat,
             verbose=args.verbose,
         )
 

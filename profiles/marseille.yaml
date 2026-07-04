@@ -1,0 +1,20 @@
+# RTM Marseille — day-type profile matching the app's expected period names.
+# RTM service_ids are opaque hashes, so we classify purely by day-of-week.
+# RTM has no school-term / holiday distinction, so school_on_weekdays and
+# school_off_weekdays share the same weekday rule (identical data in both).
+# A service is included in a period if it runs on any of that period's days.
+network: marseille-rtm
+periods:
+  saturday:
+    days: [sat]
+    description: Saturday service
+  sunday:
+    days: [sun]
+    description: Sunday service
+  school_on_weekdays:
+    days: [mon-fri]
+    description: Weekday service (RTM has no school split)
+  school_off_weekdays:
+    days: [mon-fri]
+    description: Weekday service (RTM has no school split)
+unmatched: other   # calendar_dates-only services (no weekly pattern) land here
