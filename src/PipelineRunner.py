@@ -163,8 +163,8 @@ class PipelineRunner:
         parser.add_argument(
             "--flat",
             action="store_true",
-            help="Flat per-period files at the root (routes_<period>.bin) "
-                 "instead of subfolders",
+            help="Group app-ready per-period files under raptor/ "
+                 "(raptor/routes_<period>.bin) instead of subfolders",
         )
         parser.add_argument(
             "-v",

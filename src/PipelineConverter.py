@@ -75,16 +75,17 @@ class PipelineConverter:
         total_trips = sum(len(r.trips) for r in routes)
         logger.info(f"Built {len(routes)} routes with {total_trips} trips total")
 
-        # Line geometry is period-independent → build & write lines.bin ONCE at the
-        # output root (a sibling of any per-period folders).
+        # Line geometry is period-independent → build & write lines.bin ONCE,
+        # next to the period bins (in raptor/ for flat, at the root otherwise).
         lines_written = False
         if config.gen_traces:
             reader.read_shapes()
             lines = LineGeometryBuilder.build_lines(reader)
             if lines:
-                LinesSerializer.write_lines_file(
-                    Path(output_path), lines, Version.SCHEMA_VERSION
+                lines_dir = (
+                    Path(output_path) / "raptor" if config.flat_output else Path(output_path)
                 )
+                LinesSerializer.write_lines_file(lines_dir, lines, Version.SCHEMA_VERSION)
                 lines_written = True
             else:
                 logger.warning(
@@ -117,10 +118,11 @@ class PipelineConverter:
                     f"After filtering: {len(filtered_routes)} routes with trips in this period"
                 )
 
-                # Flat layout writes routes_<period>.bin at the root (app convention);
-                # nested layout writes <period>/routes.bin.
+                # Flat layout groups app-ready files under raptor/ with per-period
+                # suffixes (raptor/routes_<period>.bin); nested writes <period>/routes.bin.
+                # In flat mode the per-period manifest is skipped (dataset.json covers it).
                 if config.flat_output:
-                    period_output = base_output
+                    period_output = base_output / "raptor"
                     period_suffix = f"_{period.name}"
                 else:
                     period_output = base_output / period.name
@@ -136,6 +138,7 @@ class PipelineConverter:
                     input_path=input_path,
                     period_name=period.name,
                     suffix=period_suffix,
+                    write_manifest=not config.flat_output,
                 )
                 manifests.append(manifest)
                 period_manifests.append((period, manifest))
@@ -195,8 +198,12 @@ class PipelineConverter:
             layout = "nested"
 
         def rel_path(period_name: str, filename: str) -> str:
-            # Nested layout stores files under <period>/; flat/single keep them at root.
-            return f"{period_name}/{filename}" if layout == "nested" else filename
+            # nested: <period>/file ; flat: raptor/file ; single: file at root.
+            if layout == "nested":
+                return f"{period_name}/{filename}"
+            if layout == "flat":
+                return f"raptor/{filename}"
+            return filename
 
         periods_index = []
         for period, manifest in period_manifests:
@@ -224,7 +231,12 @@ class PipelineConverter:
             "input": {"gtfs_path": input_path},
             "layout": layout,
             "lines": (
-                {"file": "lines.bin", "coord_scale": COORD_SCALE} if lines_written else None
+                {
+                    "file": "raptor/lines.bin" if layout == "flat" else "lines.bin",
+                    "coord_scale": COORD_SCALE,
+                }
+                if lines_written
+                else None
             ),
             "periods": periods_index,
         }
@@ -309,6 +321,7 @@ class PipelineConverter:
         input_path: str,
         period_name: str | None,
         suffix: str = "",
+        write_manifest: bool = True,
     ) -> Manifest:
         """
         Write output files for a specific period (or all data).
@@ -380,25 +393,25 @@ class PipelineConverter:
             },
         )
 
-        # Write manifest (suffixed in flat mode so periods don't overwrite each other)
-        manifest_path = output_dir / f"manifest{suffix}.json"
-        with open(manifest_path, "w", encoding="utf-8") as f:
-            json.dump(
-                {
-                    "schema_version": manifest.schema_version,
-                    "tool_version": manifest.tool_version,
-                    "created_at": manifest.created_at_iso,
-                    "inputs": manifest.inputs,
-                    "outputs": manifest.outputs,
-                    "stats": manifest.stats,
-                    "build": manifest.build,
-                },
-                f,
-                indent=2,
-                sort_keys=True,
-            )
-
-        logger.info(f"Wrote manifest to {manifest_path}")
+        # Write manifest unless suppressed (flat mode relies on the root dataset.json).
+        if write_manifest:
+            manifest_path = output_dir / f"manifest{suffix}.json"
+            with open(manifest_path, "w", encoding="utf-8") as f:
+                json.dump(
+                    {
+                        "schema_version": manifest.schema_version,
+                        "tool_version": manifest.tool_version,
+                        "created_at": manifest.created_at_iso,
+                        "inputs": manifest.inputs,
+                        "outputs": manifest.outputs,
+                        "stats": manifest.stats,
+                        "build": manifest.build,
+                    },
+                    f,
+                    indent=2,
+                    sort_keys=True,
+                )
+            logger.info(f"Wrote manifest to {manifest_path}")
 
         if period_name:
             print(f"Period '{period_name}' completed")

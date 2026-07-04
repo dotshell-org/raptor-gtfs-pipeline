@@ -138,26 +138,39 @@ consumer can discover what was produced without guessing folder names:
   "created_at": "...",
   "input": { "gtfs_path": "..." },
   "layout": "flat",              // flat | nested | single
-  "lines": { "file": "lines.bin", "coord_scale": 1000000 },  // null if no --traces
+  "lines": { "file": "raptor/lines.bin", "coord_scale": 1000000 },  // null if no --traces
   "periods": [
     {
       "name": "saturday",
       "description": "Saturday service",
       "files": {                 // paths relative to the output root
-        "routes": "routes_saturday.bin",
-        "stops": "stops_saturday.bin",
-        "index": "index_saturday.bin"
+        "routes": "raptor/routes_saturday.bin",
+        "stops": "raptor/stops_saturday.bin",
+        "index": "raptor/index_saturday.bin"
       },
-      "checksums": { "routes_saturday.bin": "sha256…", "…": "…" },
+      "checksums": { "raptor/routes_saturday.bin": "sha256…", "…": "…" },
       "stats": { "stops": 2745, "routes": 244, "trips": 20843, "…": 0 }
     }
   ]
 }
 ```
 
-`files` paths adapt to the layout (`routes_saturday.bin` when `--flat`,
+`files` paths adapt to the layout (`raptor/routes_saturday.bin` when `--flat`,
 `saturday/routes.bin` when nested). Read `dataset.json` to locate each period's
 files instead of hardcoding names.
+
+With `--flat` the output root stays tidy — the app-ready bins are grouped in a
+single `raptor/` folder you can copy as-is, and per-period manifests are omitted
+(their metadata lives in `dataset.json`):
+
+```
+raptor_data/
+├─ dataset.json
+└─ raptor/
+   ├─ routes_saturday.bin  stops_saturday.bin  index_saturday.bin
+   ├─ … (sunday, school_on_weekdays, school_off_weekdays, …)
+   └─ lines.bin            # when --traces
+```
 
 ## Binary Format Specification
 

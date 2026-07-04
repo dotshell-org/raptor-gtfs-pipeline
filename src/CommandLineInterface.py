@@ -159,8 +159,8 @@ class CommandLineInterface:
         convert_parser.add_argument(
             "--flat",
             action="store_true",
-            help="Flat per-period files at the output root "
-                 "(routes_<period>.bin) instead of <period>/routes.bin subfolders",
+            help="Group app-ready per-period files under raptor/ "
+                 "(raptor/routes_<period>.bin) instead of <period>/routes.bin subfolders",
         )
         convert_parser.set_defaults(func=CommandLineInterface.cmd_convert)
 
