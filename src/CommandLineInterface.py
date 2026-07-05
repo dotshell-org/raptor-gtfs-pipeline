@@ -4,6 +4,7 @@ import sys
 from functools import partial
 
 from src.gtfs.models.ConvertConfig import ConvertConfig
+from src.gtfs.PeloPeriodAnalyzer import PeloPeriodAnalyzer
 from src.gtfs.ProfileAnalyzer import ProfileAnalyzer
 from src.PipelineConverter import PipelineConverter
 from src.Version import Version
@@ -27,9 +28,13 @@ class CommandLineInterface:
         """Execute convert command."""
         CommandLineInterface.setup_logging(args.verbose)
 
-        # A declarative profile drives period splitting (and implies --split).
+        # --pelo (built-in analyzer) or a declarative profile drives the split.
         period_analyzer = None
-        if args.profile:
+        if args.pelo:
+            period_analyzer = PeloPeriodAnalyzer.build
+            if args.profile:
+                logging.warning("--pelo overrides --profile")
+        elif args.profile:
             profile = ProfileAnalyzer.load(args.profile)
             period_analyzer = partial(ProfileAnalyzer.build, profile)
 
@@ -44,11 +49,12 @@ class CommandLineInterface:
             speed_walk=args.speed_walk,
             transfer_cutoff=args.transfer_cutoff,
             jobs=args.jobs,
-            split_by_periods=args.split_by_periods or bool(args.profile),
+            split_by_periods=args.split_by_periods or bool(args.profile) or args.pelo,
             gen_traces=args.traces,
             dry_run=args.dry_run,
             flat_output=args.flat,
-            write_index=not args.no_index,
+            write_index=not args.no_index and not args.pelo,
+            pelo=args.pelo,
         )
 
         try:
@@ -167,6 +173,14 @@ class CommandLineInterface:
             "--no-index",
             action="store_true",
             help="Skip index.bin (consumers that only load stops/routes don't need it)",
+        )
+        convert_parser.add_argument(
+            "--pelo",
+            action="store_true",
+            help="Pelo app preset: write only stops_/routes_<period>.bin for "
+                 "saturday/sunday/school_on_weekdays/school_off_weekdays, flat at the "
+                 "output root (no index/lines/dataset). School split auto-detected, "
+                 "identical weekday data when the feed has none",
         )
         convert_parser.set_defaults(func=CommandLineInterface.cmd_convert)
 

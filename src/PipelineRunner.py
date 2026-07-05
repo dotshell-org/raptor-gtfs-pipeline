@@ -7,6 +7,7 @@ from functools import partial
 from pathlib import Path
 
 from src.gtfs.models.ConvertConfig import ConvertConfig
+from src.gtfs.PeloPeriodAnalyzer import PeloPeriodAnalyzer
 from src.gtfs.ProfileAnalyzer import ProfileAnalyzer
 from src.PipelineConverter import PipelineConverter
 
@@ -38,6 +39,7 @@ class PipelineRunner:
         profile: str | None = None,
         flat_output: bool = False,
         write_index: bool = True,
+        pelo: bool = False,
         verbose: bool = False,
     ) -> None:
         """Run the generic conversion pipeline, extracting ZIP files if necessary."""
@@ -69,7 +71,9 @@ class PipelineRunner:
                 actual_input = str(input_path)
 
             period_analyzer = None
-            if profile:
+            if pelo:
+                period_analyzer = PeloPeriodAnalyzer.build
+            elif profile:
                 loaded_profile = ProfileAnalyzer.load(profile)
                 period_analyzer = partial(ProfileAnalyzer.build, loaded_profile)
 
@@ -83,11 +87,12 @@ class PipelineRunner:
                 transfer_cutoff=transfer_cutoff,
                 speed_walk=speed_walk,
                 allow_partial_trips=allow_partial_trips,
-                split_by_periods=split_by_periods or bool(profile),
+                split_by_periods=split_by_periods or bool(profile) or pelo,
                 gen_traces=gen_traces,
                 dry_run=dry_run,
                 flat_output=flat_output,
-                write_index=write_index,
+                write_index=write_index and not pelo,
+                pelo=pelo,
             )
 
             manifest = PipelineConverter.convert(
@@ -174,6 +179,12 @@ class PipelineRunner:
             help="Skip index.bin (consumers that only load stops/routes don't need it)",
         )
         parser.add_argument(
+            "--pelo",
+            action="store_true",
+            help="Pelo app preset: bare stops_/routes_<period>.bin at the root for "
+                 "saturday/sunday/school_on_weekdays/school_off_weekdays",
+        )
+        parser.add_argument(
             "-v",
             "--verbose",
             action="store_true",
@@ -194,6 +205,7 @@ class PipelineRunner:
             profile=args.profile,
             flat_output=args.flat,
             write_index=not args.no_index,
+            pelo=args.pelo,
             verbose=args.verbose,
         )
 

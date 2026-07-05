@@ -83,7 +83,9 @@ class PipelineConverter:
             lines = LineGeometryBuilder.build_lines(reader)
             if lines:
                 lines_dir = (
-                    Path(output_path) / "raptor" if config.flat_output else Path(output_path)
+                    Path(output_path) / "raptor"
+                    if config.flat_output and not config.pelo
+                    else Path(output_path)
                 )
                 LinesSerializer.write_lines_file(lines_dir, lines, Version.SCHEMA_VERSION)
                 lines_written = True
@@ -118,10 +120,13 @@ class PipelineConverter:
                     f"After filtering: {len(filtered_routes)} routes with trips in this period"
                 )
 
-                # Flat layout groups app-ready files under raptor/ with per-period
-                # suffixes (raptor/routes_<period>.bin); nested writes <period>/routes.bin.
-                # In flat mode the per-period manifest is skipped (dataset.json covers it).
-                if config.flat_output:
+                # pelo:  bare routes_<period>.bin directly at the root (app drop-in).
+                # flat:  routes_<period>.bin grouped under raptor/.
+                # nested: <period>/routes.bin. Manifest is skipped for flat/pelo.
+                if config.pelo:
+                    period_output = base_output
+                    period_suffix = f"_{period.name}"
+                elif config.flat_output:
                     period_output = base_output / "raptor"
                     period_suffix = f"_{period.name}"
                 else:
@@ -138,15 +143,18 @@ class PipelineConverter:
                     input_path=input_path,
                     period_name=period.name,
                     suffix=period_suffix,
-                    write_manifest=not config.flat_output,
+                    write_manifest=not (config.flat_output or config.pelo),
                 )
                 manifests.append(manifest)
                 period_manifests.append((period, manifest))
 
-            # Write the self-describing root index over all periods
-            PipelineConverter._write_root_index(
-                base_output, config, period_manifests, lines_written, input_path, start_time
-            )
+            # Write the self-describing root index over all periods (not in pelo mode,
+            # which is a bare app drop-in: stops_/routes_<period>.bin only).
+            if not config.pelo:
+                PipelineConverter._write_root_index(
+                    base_output, config, period_manifests, lines_written,
+                    input_path, start_time,
+                )
 
             # Return summary manifest
             logger.info(f"\n{'=' * 60}")

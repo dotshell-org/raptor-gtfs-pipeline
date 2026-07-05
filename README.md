@@ -126,6 +126,34 @@ uv run raptor-gtfs convert --input /path/to/gtfs --output ./raptor_data --traces
 - Coordinates are stored as delta-encoded fixed-point integers, so the
   over-sampled shape geometry stays small.
 
+## Pelo app preset (`--pelo`)
+
+`--pelo` produces exactly what the Pelo app loads, for **any** GTFS: the bare
+per-period binaries at the output root, nothing else.
+
+```bash
+uv run raptor-gtfs convert --input /path/to/gtfs --output ./raptor --pelo
+```
+
+```
+raptor/
+├─ routes_saturday.bin              stops_saturday.bin
+├─ routes_sunday.bin                stops_sunday.bin
+├─ routes_school_on_weekdays.bin    stops_school_on_weekdays.bin
+└─ routes_school_off_weekdays.bin   stops_school_off_weekdays.bin
+```
+
+- Exactly four periods: `saturday`, `sunday`, `school_on_weekdays`,
+  `school_off_weekdays` — flat at the root (no `raptor/` subfolder, no
+  `index.bin`, no `lines.bin`, no `dataset.json`, no manifests). Point
+  `--output` at the app's `composeResources/files/raptor/` and it drops in.
+- **School split is auto-detected**: school-only routes (`JD…`) and school /
+  holiday `service_id` patterns route weekday services into the right period.
+  On feeds with no school signal, every weekday service goes into both, so
+  `school_on_weekdays` and `school_off_weekdays` hold identical data.
+- Preview the split with `--pelo --dry-run`. Add `--traces` to also emit
+  `lines.bin` next to the bins.
+
 ## Dataset index (`dataset.json`)
 
 Every run writes a self-describing `dataset.json` at the output root, so a

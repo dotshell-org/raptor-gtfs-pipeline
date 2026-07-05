@@ -19,3 +19,4 @@ class ConvertConfig(BaseModel):
     dry_run: bool = False  # Print the period plan without writing any files
     flat_output: bool = False  # Flat per-period files (routes_<period>.bin) vs subfolders
     write_index: bool = True  # Write index.bin/.json (disable with --no-index)
+    pelo: bool = False  # Pelo preset: bare stops_/routes_<period>.bin at the root, nothing else
