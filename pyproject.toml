@@ -56,7 +56,7 @@ ignore = ["ANN401"]
 "tests/**/*.py" = ["ANN"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.14"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
@@ -87,4 +87,5 @@ markers = [
 dev = [
     "pandas-stubs>=3.0.3.260530",
     "ruff>=0.15.20",
+    "types-PyYAML>=6.0.3",
 ]

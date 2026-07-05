@@ -66,7 +66,7 @@ class GTFSReader:
         return pd.read_csv(file_path, dtype=str, na_filter=False, low_memory=False)
 
     @staticmethod
-    def _parse_time_series(series: pd.Series) -> pd.Series:  # type: ignore[type-arg]
+    def _parse_time_series(series: pd.Series) -> pd.Series:
         """Vectorized HH:MM:SS → seconds since midnight (supports HH > 24)."""
         s = series.str.strip()
         empty = s.eq("")
@@ -78,7 +78,7 @@ class GTFSReader:
         seconds = pd.to_numeric(parts[2], errors="coerce")
         result = hours * 3600 + minutes * 60 + seconds
         result[empty] = np.nan
-        return result  # type: ignore[return-value]
+        return result
 
     # ------------------------------------------------------------------
     # Public API
@@ -193,7 +193,7 @@ class GTFSReader:
 
         self.stops = []
         for idx, row in df.iterrows():
-            i = int(idx)  # type: ignore[arg-type]
+            i = int(idx)  # type: ignore[call-overload]
             self.stop_id_map[row["stop_id"]] = i
             self.internal_to_stop[i] = row["stop_id"]
             self.stops.append(Stop(
@@ -226,7 +226,7 @@ class GTFSReader:
 
         self.routes = []
         for idx, row in df.iterrows():
-            i = int(idx)  # type: ignore[arg-type]
+            i = int(idx)  # type: ignore[call-overload]
             self.route_id_map[row["route_id"]] = i
             self.internal_to_route[i] = row["route_id"]
             self.routes.append(Route(

@@ -1,5 +1,6 @@
 import logging
 from collections import defaultdict
+from typing import cast
 
 from src.gtfs.GTFSReader import GTFSReader
 from src.gtfs.models.LineData import LineData, LinePath
@@ -32,7 +33,7 @@ class LineGeometryBuilder:
         )
         shapes_by_route: dict[str, dict[int, list[str]]] = defaultdict(dict)
         for key, shape_ids in grouped.items():
-            route_id, direction_id = key  # type: ignore[misc]
+            route_id, direction_id = cast(tuple[str, int], key)
             shapes_by_route[str(route_id)][int(direction_id)] = list(shape_ids)
 
         lines: list[LineData] = []

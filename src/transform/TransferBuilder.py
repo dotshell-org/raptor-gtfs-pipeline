@@ -35,7 +35,10 @@ class TransferBuilder:
             # Drop transfers to unknown stops
             valid = df.dropna(subset=["from_int", "to_int"])
             if len(valid) < len(df):
-                logger.warning(f"Dropped {len(df) - len(valid)} transfers referencing unknown stops")
+                logger.warning(
+                    f"Dropped {len(df) - len(valid)} transfers referencing "
+                    f"unknown stops"
+                )
 
             for _, row in valid.iterrows():
                 from_id = int(row["from_int"])
@@ -85,7 +88,8 @@ class TransferBuilder:
             lons_i = lons_all[i:end_i, None]
             
             # Distance calculation for chunk i against all stops j > i
-            # To keep it memory efficient, we can further chunk the second dimension or just process j > i
+            # To keep it memory efficient, we can further chunk the second
+            # dimension or just process j > i
             for j in range(i, n, chunk_size):
                 end_j = min(j + chunk_size, n)
                 
@@ -100,7 +104,9 @@ class TransferBuilder:
                     + np.cos(lats_i) * np.cos(lats_j) * np.sin(dlon / 2) ** 2
                 )
                 # Use float32 to save memory
-                distances = (6371000.0 * 2.0 * np.arctan2(np.sqrt(a), np.sqrt(1.0 - a))).astype(np.float32)
+                distances = (
+                        6371000.0 * 2.0 * np.arctan2(np.sqrt(a), np.sqrt(1.0 - a))
+                ).astype(np.float32)
                 
                 # Filter by cutoff and i < j (to avoid diagonal and double counting)
                 mask = distances <= cutoff

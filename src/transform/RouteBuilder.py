@@ -1,5 +1,6 @@
 import logging
 from collections import Counter
+from typing import cast
 
 import pandas as pd
 
@@ -42,7 +43,8 @@ class RouteBuilder:
 
         routes: list[RouteData] = []
 
-        for (route_id, direction_id), trip_ids in sorted(trips_by_route_dir.items()):
+        for key, trip_ids in sorted(trips_by_route_dir.items()):
+            route_id, direction_id = cast(tuple[str, int], key)
             route_id_internal = reader.get_internal_route_id(route_id)
 
             sequences_for_route: list[tuple[str, ...]] = [
