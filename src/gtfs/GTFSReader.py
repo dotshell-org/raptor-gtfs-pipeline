@@ -49,6 +49,9 @@ class GTFSReader:
         self.stop_times_df: pd.DataFrame = pd.DataFrame()
         self.trips_df: pd.DataFrame = pd.DataFrame()
 
+        # Ordered shape geometry (optional): shape_id -> [(lon, lat), ...]
+        self.shapes_points: dict[str, list[tuple[float, float]]] = {}
+
     # ------------------------------------------------------------------
     # Core I/O
     # ------------------------------------------------------------------
@@ -63,7 +66,7 @@ class GTFSReader:
         return pd.read_csv(file_path, dtype=str, na_filter=False, low_memory=False)
 
     @staticmethod
-    def _parse_time_series(series: pd.Series) -> pd.Series:  # type: ignore[type-arg]
+    def _parse_time_series(series: pd.Series) -> pd.Series:
         """Vectorized HH:MM:SS → seconds since midnight (supports HH > 24)."""
         s = series.str.strip()
         empty = s.eq("")
@@ -75,14 +78,18 @@ class GTFSReader:
         seconds = pd.to_numeric(parts[2], errors="coerce")
         result = hours * 3600 + minutes * 60 + seconds
         result[empty] = np.nan
-        return result  # type: ignore[return-value]
+        return result
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
-    def read_all(self) -> None:
-        """Read all GTFS files."""
+    def read_all(self, skip_stop_times: bool = False) -> None:
+        """Read all GTFS files.
+
+        ``skip_stop_times`` skips the expensive stop_times/transfers read — used by
+        ``--dry-run``, which only needs calendar/trips to preview the period plan.
+        """
         logger.info(f"Reading GTFS data from {self.gtfs_path}")
         self.read_agencies()
         self.read_stops()
@@ -90,8 +97,9 @@ class GTFSReader:
         self.read_calendar()
         self.read_calendar_dates()
         self.read_trips()
-        self.read_stop_times()
-        self.read_transfers()
+        if not skip_stop_times:
+            self.read_stop_times()
+            self.read_transfers()
         logger.info(
             f"Loaded {len(self.stops)} stops, {len(self.routes)} routes, "
             f"{len(self.trips)} trips, {len(self.stop_times_df)} stop_times, "
@@ -185,7 +193,7 @@ class GTFSReader:
 
         self.stops = []
         for idx, row in df.iterrows():
-            i = int(idx)  # type: ignore[arg-type]
+            i = int(idx)  # type: ignore[call-overload]
             self.stop_id_map[row["stop_id"]] = i
             self.internal_to_stop[i] = row["stop_id"]
             self.stops.append(Stop(
@@ -218,7 +226,7 @@ class GTFSReader:
 
         self.routes = []
         for idx, row in df.iterrows():
-            i = int(idx)  # type: ignore[arg-type]
+            i = int(idx)  # type: ignore[call-overload]
             self.route_id_map[row["route_id"]] = i
             self.internal_to_route[i] = row["route_id"]
             self.routes.append(Route(
@@ -226,6 +234,8 @@ class GTFSReader:
                 route_short_name=row.get("route_short_name", ""),
                 route_long_name=row.get("route_long_name", ""),
                 route_type=int(row["_route_type"]),
+                route_color=row.get("route_color", ""),
+                route_text_color=row.get("route_text_color", ""),
             ))
 
     def read_trips(self) -> None:
@@ -241,6 +251,10 @@ class GTFSReader:
                 df["direction_id"].replace("", "0"), errors="coerce"
             ).fillna(0).astype(int)
         )
+
+        # shape_id is optional in GTFS; keep it for line geometry when present.
+        if "shape_id" not in df.columns:
+            df["shape_id"] = ""
 
         df = df.sort_values("trip_id").reset_index(drop=True)
         df["trip_id_internal"] = df.index
@@ -259,9 +273,9 @@ class GTFSReader:
                 direction_id=int(row["direction_id"]),
             ))
 
-        # Expose DataFrame for TripBuilder / RouteBuilder
+        # Expose DataFrame for TripBuilder / RouteBuilder / LineGeometryBuilder
         self.trips_df = df[
-            ["trip_id", "route_id", "service_id", "direction_id", "trip_id_internal"]
+            ["trip_id", "route_id", "service_id", "direction_id", "shape_id", "trip_id_internal"]
         ].copy()
 
     def read_stop_times(self) -> None:
@@ -335,6 +349,41 @@ class GTFSReader:
                 to_stop_id=row["to_stop_id"],
                 min_transfer_time=int(row["_min_time"]),
             ))
+
+    def read_shapes(self) -> None:
+        """Read shapes.txt (optional) into an ordered points dict for line geometry.
+
+        Populates ``shapes_points`` as ``shape_id -> [(lon, lat), ...]`` sorted by
+        ``shape_pt_sequence``. Missing file leaves ``shapes_points`` empty (no traces).
+        """
+        df = self._read_df("shapes.txt", required=False)
+        if df.empty:
+            logger.info("shapes.txt not found — no line geometry available")
+            return
+
+        df["_lat"] = pd.to_numeric(df["shape_pt_lat"].str.strip(), errors="coerce")
+        df["_lon"] = pd.to_numeric(df["shape_pt_lon"].str.strip(), errors="coerce")
+        df["_seq"] = pd.to_numeric(df["shape_pt_sequence"].str.strip(), errors="coerce")
+
+        invalid = df["_lat"].isna() | df["_lon"].isna() | df["_seq"].isna()
+        if invalid.any():
+            logger.debug(f"{int(invalid.sum())} shape points with invalid data, skipping")
+            df = df[~invalid]
+        if df.empty:
+            return
+
+        df["_seq"] = df["_seq"].astype(int)
+        df = df.sort_values(["shape_id", "_seq"])
+
+        self.shapes_points = {}
+        for shape_id, group in df.groupby("shape_id", sort=False):
+            self.shapes_points[str(shape_id)] = list(
+                zip(
+                    group["_lon"].astype(float).tolist(),
+                    group["_lat"].astype(float).tolist(),
+                )
+            )
+        logger.info(f"Loaded {len(self.shapes_points)} shapes")
 
     # ------------------------------------------------------------------
     # Lookup helpers (unchanged public API)

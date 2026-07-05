@@ -15,6 +15,8 @@ from src.gtfs.models.ServicePeriod import ServicePeriod
 from src.optimization.NetworkIndexBuilder import NetworkIndexBuilder
 from src.output.BinarySerializer import BinarySerializer
 from src.output.JsonSerializer import JsonSerializer
+from src.output.LinesSerializer import COORD_SCALE, LinesSerializer
+from src.transform.LineGeometryBuilder import LineGeometryBuilder
 from src.transform.RouteBuilder import RouteBuilder
 from src.transform.StopBuilder import StopBuilder
 from src.transform.TransferBuilder import TransferBuilder
@@ -54,25 +56,17 @@ class PipelineConverter:
         logger.info(f"Starting conversion: {input_path} -> {output_path}")
         start_time = datetime.now(UTC)
 
-        # Read GTFS
+        # Read GTFS (dry-run only needs calendar/trips to preview the plan)
         reader = GTFSReader(input_path)
-        reader.read_all()
+        reader.read_all(skip_stop_times=config.dry_run)
 
-        # Check if we should split by service periods
-        periods: list[ServicePeriod] | None = None
-        if config.split_by_periods:
-            if period_analyzer:
-                logger.info("Using custom period analyzer")
-                periods = period_analyzer(reader)
-            else:
-                periods = CalendarAnalyzer.analyze_service_periods(reader)
+        # Resolve service periods (used by both split output and --dry-run)
+        periods = PipelineConverter._resolve_periods(reader, config, period_analyzer)
 
-            if not periods:
-                logger.warning(
-                    "split_by_periods enabled but no calendar data found, "
-                    "generating single output"
-                )
-                periods = None
+        if config.dry_run:
+            return PipelineConverter._print_dry_run_plan(
+                reader, periods, input_path, start_time
+            )
 
         # Build routes and trips ONCE (optimization for period splitting)
         logger.info("Building routes and trips from GTFS data...")
@@ -81,9 +75,30 @@ class PipelineConverter:
         total_trips = sum(len(r.trips) for r in routes)
         logger.info(f"Built {len(routes)} routes with {total_trips} trips total")
 
+        # Line geometry is period-independent → build & write lines.bin ONCE,
+        # next to the period bins (in raptor/ for flat, at the root otherwise).
+        lines_written = False
+        if config.gen_traces:
+            reader.read_shapes()
+            lines = LineGeometryBuilder.build_lines(reader)
+            if lines:
+                lines_dir = (
+                    Path(output_path) / "raptor"
+                    if config.flat_output and not config.pelo
+                    else Path(output_path)
+                )
+                LinesSerializer.write_lines_file(lines_dir, lines, Version.SCHEMA_VERSION)
+                lines_written = True
+            else:
+                logger.warning(
+                    "--traces requested but no usable shapes.txt geometry was found; "
+                    "skipping lines.bin"
+                )
+
         # If splitting by periods, generate one folder per period
         if periods:
             manifests = []
+            period_manifests: list[tuple[ServicePeriod, Manifest]] = []
             base_output = Path(output_path)
 
             for period in periods:
@@ -105,17 +120,41 @@ class PipelineConverter:
                     f"After filtering: {len(filtered_routes)} routes with trips in this period"
                 )
 
+                # pelo:  bare routes_<period>.bin directly at the root (app drop-in).
+                # flat:  routes_<period>.bin grouped under raptor/.
+                # nested: <period>/routes.bin. Manifest is skipped for flat/pelo.
+                if config.pelo:
+                    period_output = base_output
+                    period_suffix = f"_{period.name}"
+                elif config.flat_output:
+                    period_output = base_output / "raptor"
+                    period_suffix = f"_{period.name}"
+                else:
+                    period_output = base_output / period.name
+                    period_suffix = ""
+
                 # Generate output for this period
                 manifest = PipelineConverter._write_period_output(
                     reader=reader,
                     routes=filtered_routes,
-                    output_path=base_output / period.name,
+                    output_path=period_output,
                     config=config,
                     start_time=start_time,
                     input_path=input_path,
                     period_name=period.name,
+                    suffix=period_suffix,
+                    write_manifest=not (config.flat_output or config.pelo),
                 )
                 manifests.append(manifest)
+                period_manifests.append((period, manifest))
+
+            # Write the self-describing root index over all periods (not in pelo mode,
+            # which is a bare app drop-in: stops_/routes_<period>.bin only).
+            if not config.pelo:
+                PipelineConverter._write_root_index(
+                    base_output, config, period_manifests, lines_written,
+                    input_path, start_time,
+                )
 
             # Return summary manifest
             logger.info(f"\n{'=' * 60}")
@@ -127,7 +166,7 @@ class PipelineConverter:
             return manifests[0]  # Return first manifest for backward compatibility
         else:
             # Single output (original behavior)
-            return PipelineConverter._write_period_output(
+            single_manifest = PipelineConverter._write_period_output(
                 reader=reader,
                 routes=routes,
                 output_path=Path(output_path),
@@ -136,6 +175,149 @@ class PipelineConverter:
                 input_path=input_path,
                 period_name=None,
             )
+            single_period = ServicePeriod(name="all", description="Complete dataset")
+            PipelineConverter._write_root_index(
+                Path(output_path), config, [(single_period, single_manifest)],
+                lines_written, input_path, start_time,
+            )
+            return single_manifest
+
+    @staticmethod
+    def _write_root_index(
+        base_output: Path,
+        config: ConvertConfig,
+        period_manifests: list[tuple[ServicePeriod, Manifest]],
+        lines_written: bool,
+        input_path: str,
+        start_time: datetime,
+    ) -> None:
+        """Write a self-describing dataset.json at the output root.
+
+        Lets a consumer discover the produced periods, their files (paths
+        relative to the root) and checksums without guessing folder names.
+        Named 'dataset' to avoid clashing with the per-period index.bin /
+        index.json (RAPTOR network index) and manifest.json.
+        """
+        if config.flat_output:
+            layout = "flat"
+        elif len(period_manifests) == 1 and period_manifests[0][0].name == "all":
+            layout = "single"
+        else:
+            layout = "nested"
+
+        def rel_path(period_name: str, filename: str) -> str:
+            # nested: <period>/file ; flat: raptor/file ; single: file at root.
+            if layout == "nested":
+                return f"{period_name}/{filename}"
+            if layout == "flat":
+                return f"raptor/{filename}"
+            return filename
+
+        periods_index = []
+        for period, manifest in period_manifests:
+            files = {
+                kind: rel_path(period.name, fname)
+                for kind in ("routes", "stops", "index")
+                for fname in manifest.outputs
+                if fname.startswith(kind) and fname.endswith(".bin")
+            }
+            periods_index.append({
+                "name": period.name,
+                "description": period.description,
+                "files": files,
+                "checksums": {
+                    rel_path(period.name, fname): sha
+                    for fname, sha in manifest.outputs.items()
+                },
+                "stats": manifest.stats,
+            })
+
+        index = {
+            "schema_version": Version.SCHEMA_VERSION,
+            "tool_version": Version.VERSION,
+            "created_at": start_time.isoformat(),
+            "input": {"gtfs_path": input_path},
+            "layout": layout,
+            "lines": (
+                {
+                    "file": "raptor/lines.bin" if layout == "flat" else "lines.bin",
+                    "coord_scale": COORD_SCALE,
+                }
+                if lines_written
+                else None
+            ),
+            "periods": periods_index,
+        }
+
+        index_path = base_output / "dataset.json"
+        with open(index_path, "w", encoding="utf-8") as f:
+            json.dump(index, f, indent=2, sort_keys=True)
+        logger.info(f"Wrote dataset index to {index_path}")
+
+    @staticmethod
+    def _resolve_periods(
+        reader: GTFSReader,
+        config: ConvertConfig,
+        period_analyzer: Callable[[GTFSReader], list[ServicePeriod]] | None,
+    ) -> list[ServicePeriod] | None:
+        """Compute service periods when splitting (or previewing via --dry-run)."""
+        if not (config.split_by_periods or config.dry_run):
+            return None
+        if period_analyzer:
+            logger.info("Using custom period analyzer")
+            periods = period_analyzer(reader)
+        else:
+            periods = CalendarAnalyzer.analyze_service_periods(reader)
+        if not periods:
+            logger.warning(
+                "Period splitting requested but no calendar data found; "
+                "generating a single output"
+            )
+            return None
+        return periods
+
+    @staticmethod
+    def _print_dry_run_plan(
+        reader: GTFSReader,
+        periods: list[ServicePeriod] | None,
+        input_path: str,
+        start_time: datetime,
+    ) -> Manifest:
+        """Print the period plan (names, #services, #trips) without writing files."""
+        trip_counts: dict[str, int] = {}
+        if not reader.trips_df.empty:
+            trip_counts = {
+                str(sid): int(n)
+                for sid, n in reader.trips_df.groupby("service_id").size().items()
+            }
+
+        print("\nDry run — no files were written.")
+        print(f"Input: {input_path}")
+        if not periods:
+            print("Period split: none — a single output would be generated.")
+            period_count = 0
+        else:
+            print(f"Would generate {len(periods)} period folder(s):")
+            for period in periods:
+                n_trips = sum(trip_counts.get(sid, 0) for sid in period.service_ids)
+                print(
+                    f"  {period.name:<22} {len(period.service_ids):>4} service(s)"
+                    f"  {n_trips:>8} trips   {period.description}"
+                )
+            period_count = len(periods)
+
+        return Manifest(
+            schema_version=Version.SCHEMA_VERSION,
+            tool_version=Version.VERSION,
+            created_at_iso=start_time.isoformat(),
+            inputs={"gtfs_path": input_path, "dry_run": True},
+            outputs={},
+            stats={"periods": period_count},
+            build={
+                "python": platform.python_version(),
+                "platform": platform.platform(),
+            },
+        )
 
     @staticmethod
     def _write_period_output(
@@ -146,9 +328,14 @@ class PipelineConverter:
         start_time: datetime,
         input_path: str,
         period_name: str | None,
+        suffix: str = "",
+        write_manifest: bool = True,
     ) -> Manifest:
         """
         Write output files for a specific period (or all data).
+
+        ``suffix`` (e.g. ``_saturday``) produces the flat app layout
+        (``routes_saturday.bin`` at the root) instead of a per-period subfolder.
         """
         # Build stops from the filtered routes
         stops = StopBuilder.build_stops(reader, routes)
@@ -168,22 +355,20 @@ class PipelineConverter:
         files_written: dict[str, str] = {}
 
         if config.format in ("binary", "both"):
-            BinarySerializer.write_binary_files(
-                output_dir, routes, stops, index, Version.SCHEMA_VERSION, config.compression
+            files_written.update(
+                BinarySerializer.write_binary_files(
+                    output_dir, routes, stops, index, Version.SCHEMA_VERSION,
+                    config.compression, suffix=suffix, write_index=config.write_index,
+                )
             )
-            files_written.update({
-                "routes.bin": str(output_dir / "routes.bin"),
-                "stops.bin": str(output_dir / "stops.bin"),
-                "index.bin": str(output_dir / "index.bin")
-            })
 
         if config.format in ("json", "both") or config.debug_json:
-            JsonSerializer.write_json_files(output_dir, routes, stops, index)
-            files_written.update({
-                "routes.json": str(output_dir / "routes.json"),
-                "stops.json": str(output_dir / "stops.json"),
-                "index.json": str(output_dir / "index.json")
-            })
+            files_written.update(
+                JsonSerializer.write_json_files(
+                    output_dir, routes, stops, index, suffix=suffix,
+                    write_index=config.write_index,
+                )
+            )
 
         # Compute checksums
         checksums = {}
@@ -217,25 +402,25 @@ class PipelineConverter:
             },
         )
 
-        # Write manifest
-        manifest_path = output_dir / "manifest.json"
-        with open(manifest_path, "w", encoding="utf-8") as f:
-            json.dump(
-                {
-                    "schema_version": manifest.schema_version,
-                    "tool_version": manifest.tool_version,
-                    "created_at": manifest.created_at_iso,
-                    "inputs": manifest.inputs,
-                    "outputs": manifest.outputs,
-                    "stats": manifest.stats,
-                    "build": manifest.build,
-                },
-                f,
-                indent=2,
-                sort_keys=True,
-            )
-
-        logger.info(f"Wrote manifest to {manifest_path}")
+        # Write manifest unless suppressed (flat mode relies on the root dataset.json).
+        if write_manifest:
+            manifest_path = output_dir / f"manifest{suffix}.json"
+            with open(manifest_path, "w", encoding="utf-8") as f:
+                json.dump(
+                    {
+                        "schema_version": manifest.schema_version,
+                        "tool_version": manifest.tool_version,
+                        "created_at": manifest.created_at_iso,
+                        "inputs": manifest.inputs,
+                        "outputs": manifest.outputs,
+                        "stats": manifest.stats,
+                        "build": manifest.build,
+                    },
+                    f,
+                    indent=2,
+                    sort_keys=True,
+                )
+            logger.info(f"Wrote manifest to {manifest_path}")
 
         if period_name:
             print(f"Period '{period_name}' completed")

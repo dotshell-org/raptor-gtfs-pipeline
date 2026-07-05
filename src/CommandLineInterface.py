@@ -1,8 +1,11 @@
 import argparse
 import logging
 import sys
+from functools import partial
 
 from src.gtfs.models.ConvertConfig import ConvertConfig
+from src.gtfs.PeloPeriodAnalyzer import PeloPeriodAnalyzer
+from src.gtfs.ProfileAnalyzer import ProfileAnalyzer
 from src.PipelineConverter import PipelineConverter
 from src.Version import Version
 
@@ -25,6 +28,16 @@ class CommandLineInterface:
         """Execute convert command."""
         CommandLineInterface.setup_logging(args.verbose)
 
+        # --pelo (built-in analyzer) or a declarative profile drives the split.
+        period_analyzer = None
+        if args.pelo:
+            period_analyzer = PeloPeriodAnalyzer.build
+            if args.profile:
+                logging.warning("--pelo overrides --profile")
+        elif args.profile:
+            profile = ProfileAnalyzer.load(args.profile)
+            period_analyzer = partial(ProfileAnalyzer.build, profile)
+
         config = ConvertConfig(
             input_path=args.input,
             output_path=args.output,
@@ -36,14 +49,22 @@ class CommandLineInterface:
             speed_walk=args.speed_walk,
             transfer_cutoff=args.transfer_cutoff,
             jobs=args.jobs,
-            split_by_periods=args.split_by_periods,
+            split_by_periods=args.split_by_periods or bool(args.profile) or args.pelo,
+            gen_traces=args.traces,
+            dry_run=args.dry_run,
+            flat_output=args.flat,
+            write_index=not args.no_index and not args.pelo,
+            pelo=args.pelo,
         )
 
         try:
-            manifest = PipelineConverter.convert(args.input, args.output, config)
-            print("\nConversion successful!")
-            print(f"Output: {args.output}")
-            print(f"Stats: {manifest.stats}")
+            manifest = PipelineConverter.convert(
+                args.input, args.output, config, period_analyzer=period_analyzer
+            )
+            if not args.dry_run:
+                print("\nConversion successful!")
+                print(f"Output: {args.output}")
+                print(f"Stats: {manifest.stats}")
             return 0
         except Exception as e:
             print(f"Error: {e}", file=sys.stderr)
@@ -122,6 +143,44 @@ class CommandLineInterface:
             default=False,
             help="Generate separate folders per service period "
                  "(weekday/saturday/sunday) (default: false)",
+        )
+        convert_parser.add_argument(
+            "--traces",
+            "--tracés",
+            dest="traces",
+            action="store_true",
+            help="Generate line geometry (lines.bin) from shapes.txt. "
+                 "No-op if the feed has no shapes.txt (default: off)",
+        )
+        convert_parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="Print the service-period plan (names, #services, #trips) "
+                 "without writing any files",
+        )
+        convert_parser.add_argument(
+            "--profile",
+            help="Path to a YAML period profile (implies --split-by-periods); "
+                 "see profiles/lyon.yaml and profiles/marseille.yaml",
+        )
+        convert_parser.add_argument(
+            "--flat",
+            action="store_true",
+            help="Group app-ready per-period files under raptor/ "
+                 "(raptor/routes_<period>.bin) instead of <period>/routes.bin subfolders",
+        )
+        convert_parser.add_argument(
+            "--no-index",
+            action="store_true",
+            help="Skip index.bin (consumers that only load stops/routes don't need it)",
+        )
+        convert_parser.add_argument(
+            "--pelo",
+            action="store_true",
+            help="Pelo app preset: write only stops_/routes_<period>.bin for "
+                 "saturday/sunday/school_on_weekdays/school_off_weekdays, flat at the "
+                 "output root (no index/lines/dataset). School split auto-detected, "
+                 "identical weekday data when the feed has none",
         )
         convert_parser.set_defaults(func=CommandLineInterface.cmd_convert)
 

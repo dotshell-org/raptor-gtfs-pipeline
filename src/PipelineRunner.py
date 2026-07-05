@@ -3,9 +3,12 @@ import logging
 import shutil
 import tempfile
 import zipfile
+from functools import partial
 from pathlib import Path
 
 from src.gtfs.models.ConvertConfig import ConvertConfig
+from src.gtfs.PeloPeriodAnalyzer import PeloPeriodAnalyzer
+from src.gtfs.ProfileAnalyzer import ProfileAnalyzer
 from src.PipelineConverter import PipelineConverter
 
 
@@ -31,6 +34,12 @@ class PipelineRunner:
         transfer_cutoff: int = 500,
         speed_walk: float = 1.33,
         allow_partial_trips: bool = False,
+        gen_traces: bool = False,
+        dry_run: bool = False,
+        profile: str | None = None,
+        flat_output: bool = False,
+        write_index: bool = True,
+        pelo: bool = False,
         verbose: bool = False,
     ) -> None:
         """Run the generic conversion pipeline, extracting ZIP files if necessary."""
@@ -61,6 +70,13 @@ class PipelineRunner:
             else:
                 actual_input = str(input_path)
 
+            period_analyzer = None
+            if pelo:
+                period_analyzer = PeloPeriodAnalyzer.build
+            elif profile:
+                loaded_profile = ProfileAnalyzer.load(profile)
+                period_analyzer = partial(ProfileAnalyzer.build, loaded_profile)
+
             config = ConvertConfig(
                 input_path=actual_input,
                 output_path=str(output_path),
@@ -71,10 +87,17 @@ class PipelineRunner:
                 transfer_cutoff=transfer_cutoff,
                 speed_walk=speed_walk,
                 allow_partial_trips=allow_partial_trips,
-                split_by_periods=split_by_periods,
+                split_by_periods=split_by_periods or bool(profile) or pelo,
+                gen_traces=gen_traces,
+                dry_run=dry_run,
+                flat_output=flat_output,
+                write_index=write_index and not pelo,
+                pelo=pelo,
             )
 
-            manifest = PipelineConverter.convert(actual_input, str(output_path), config)
+            manifest = PipelineConverter.convert(
+                actual_input, str(output_path), config, period_analyzer=period_analyzer
+            )
             logger.info("\nConversion successful!")
             logger.info(f"Output directory: {output_path}")
             logger.info(f"Stats: {manifest.stats}")
@@ -129,6 +152,39 @@ class PipelineRunner:
             help="Allow trips that do not serve all stops of a route",
         )
         parser.add_argument(
+            "--traces",
+            "--tracés",
+            dest="traces",
+            action="store_true",
+            help="Generate line geometry (lines.bin) from shapes.txt (default: off)",
+        )
+        parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="Print the service-period plan without writing any files",
+        )
+        parser.add_argument(
+            "--profile",
+            help="Path to a YAML period profile (implies split-by-periods)",
+        )
+        parser.add_argument(
+            "--flat",
+            action="store_true",
+            help="Group app-ready per-period files under raptor/ "
+                 "(raptor/routes_<period>.bin) instead of subfolders",
+        )
+        parser.add_argument(
+            "--no-index",
+            action="store_true",
+            help="Skip index.bin (consumers that only load stops/routes don't need it)",
+        )
+        parser.add_argument(
+            "--pelo",
+            action="store_true",
+            help="Pelo app preset: bare stops_/routes_<period>.bin at the root for "
+                 "saturday/sunday/school_on_weekdays/school_off_weekdays",
+        )
+        parser.add_argument(
             "-v",
             "--verbose",
             action="store_true",
@@ -144,6 +200,12 @@ class PipelineRunner:
             transfer_cutoff=args.transfer_cutoff,
             speed_walk=args.speed_walk,
             allow_partial_trips=args.allow_partial_trips,
+            gen_traces=args.traces,
+            dry_run=args.dry_run,
+            profile=args.profile,
+            flat_output=args.flat,
+            write_index=not args.no_index,
+            pelo=args.pelo,
             verbose=args.verbose,
         )
 

@@ -9,3 +9,5 @@ class Route(BaseModel):
     route_short_name: str
     route_long_name: str
     route_type: int
+    route_color: str = ""
+    route_text_color: str = ""
