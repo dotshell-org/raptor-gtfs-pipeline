@@ -1,0 +1,31 @@
+# Réseau Mistral (Toulon) — day-type profile matching the app's expected
+# period names.
+#
+# WARNING: this feed's calendar.txt has every day column set to 0 — the real
+# service is carried entirely by calendar_dates.txt. Day-based rules (`days:`)
+# would therefore match nothing; we classify purely by the day-type token
+# encoded in the service_id (-Semaine-, -Samedi-, -Dimanche-).
+# Do NOT run with --pelo: it overrides --profile and reads the (empty)
+# calendar day bits.
+#
+# `JUA` is the only calendar anchor that carries trips (the Mont Faron cable
+# car, running 7 days a week) — included in all four periods.
+# `-Fête-` (public holiday) services are deliberately excluded: the app maps
+# public holidays to the sunday dataset (FrenchPublicHolidayStrategy), so
+# holiday-only trips would only inflate ordinary Sundays.
+# Summer feed: no school split, so school_on == school_off (identical data).
+network: toulon-mistral
+periods:
+  saturday:
+    service_id_matches: "-Samedi-|^JUA$"
+    description: Saturday service
+  sunday:
+    service_id_matches: "-Dimanche-|^JUA$"
+    description: Sunday and holidays service
+  school_on_weekdays:
+    service_id_matches: "-Semaine-|^JUA$"
+    description: Weekday service (summer feed, no school split)
+  school_off_weekdays:
+    service_id_matches: "-Semaine-|^JUA$"
+    description: Weekday service (summer feed, no school split)
+unmatched: other   # -Fête- and empty monthly anchors land here
