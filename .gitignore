@@ -62,3 +62,8 @@ profiles/gtfs/*/
 # Temp extraction dirs
 temp_gtfs/
 .junie
+
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
