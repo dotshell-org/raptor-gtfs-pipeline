@@ -60,37 +60,47 @@ class GTFSReader(private val gtfsPath: String) {
         }
     }
 
-    private fun readCsv(name: String, required: Boolean = true): List<Map<String, String>> {
+        private fun readCsv(name: String, required: Boolean = true, action: (Map<String, String>) -> Unit) {
         val file = getFile(name)
         if (file == null) {
             if (required) throw RuntimeException("Required file not found: $name")
-            return emptyList()
+            return
         }
-        return csvReader().readAllWithHeader(file)
+        com.github.doyaaaaaken.kotlincsv.dsl.csvReader().open(file) {
+            readAllWithHeaderAsSequence().forEach { action(it) }
+        }
     }
-
     fun readAgencies() {
-        var rows = readCsv("agencies.txt", required = false)
-        if (rows.isEmpty()) rows = readCsv("agency.txt", required = false)
-        if (rows.isEmpty()) return
-        
-        for (row in rows) {
+        var found = false
+        readCsv("agencies.txt", required = false) { row ->
+            found = true
             agencies.add(Agency(
                 agencyId = row["agency_id"] ?: "",
                 agencyName = row["agency_name"] ?: "",
                 agencyTimezone = row["agency_timezone"] ?: ""
             ))
         }
+        if (!found) {
+            readCsv("agency.txt", required = false) { row ->
+                agencies.add(Agency(
+                    agencyId = row["agency_id"] ?: "",
+                    agencyName = row["agency_name"] ?: "",
+                    agencyTimezone = row["agency_timezone"] ?: ""
+                ))
+            }
+        }
     }
 
     fun readStops() {
-        val rows = readCsv("stops.txt")
-        var i = 0
-        for (row in rows) {
-            val stopId = row["stop_id"] ?: continue
+                var i = 0
+
+
+        readCsv("stops.txt") { row ->
+
+            val stopId = row["stop_id"] ?: return@readCsv
             val lat = row["stop_lat"]?.trim()?.toDoubleOrNull()
             val lon = row["stop_lon"]?.trim()?.toDoubleOrNull()
-            if (lat == null || lon == null) continue
+            if (lat == null || lon == null) return@readCsv
 
             stopIdMap[stopId] = i
             internalToStop[i] = stopId
@@ -101,14 +111,15 @@ class GTFSReader(private val gtfsPath: String) {
                 lon = lon
             ))
             i++
-        }
-    }
+        }    }
 
     fun readRoutes() {
-        val rows = readCsv("routes.txt")
-        var i = 0
-        for (row in rows) {
-            val routeId = row["route_id"] ?: continue
+                var i = 0
+
+
+        readCsv("routes.txt") { row ->
+
+            val routeId = row["route_id"] ?: return@readCsv
             val routeType = row["route_type"]?.trim()?.toIntOrNull() ?: 3
 
             routeIdMap[routeId] = i
@@ -122,14 +133,13 @@ class GTFSReader(private val gtfsPath: String) {
                 routeTextColor = row["route_text_color"] ?: ""
             ))
             i++
-        }
-    }
+        }    }
 
     fun readCalendar() {
-        val rows = readCsv("calendar.txt", required = false)
-        for (row in rows) {
+        readCsv("calendar.txt", required = false) { row ->
+
             calendar.add(Calendar(
-                serviceId = row["service_id"] ?: continue,
+                serviceId = row["service_id"] ?: return@readCsv,
                 monday = row["monday"] == "1",
                 tuesday = row["tuesday"] == "1",
                 wednesday = row["wednesday"] == "1",
@@ -140,28 +150,28 @@ class GTFSReader(private val gtfsPath: String) {
                 startDate = row["start_date"] ?: "",
                 endDate = row["end_date"] ?: ""
             ))
-        }
-    }
+        }    }
 
     fun readCalendarDates() {
-        val rows = readCsv("calendar_dates.txt", required = false)
-        for (row in rows) {
-            val exceptionType = row["exception_type"]?.trim()?.toIntOrNull() ?: continue
+        readCsv("calendar_dates.txt", required = false) { row ->
+
+            val exceptionType = row["exception_type"]?.trim()?.toIntOrNull() ?: return@readCsv
             calendarDates.add(CalendarDate(
-                serviceId = row["service_id"] ?: continue,
+                serviceId = row["service_id"] ?: return@readCsv,
                 date = row["date"] ?: "",
                 exceptionType = exceptionType
             ))
-        }
-    }
+        }    }
 
     fun readTrips() {
-        val rows = readCsv("trips.txt")
-        var i = 0
-        for (row in rows) {
-            val tripId = row["trip_id"] ?: continue
-            val routeId = row["route_id"] ?: continue
-            val serviceId = row["service_id"] ?: continue
+                var i = 0
+
+
+        readCsv("trips.txt") { row ->
+
+            val tripId = row["trip_id"] ?: return@readCsv
+            val routeId = row["route_id"] ?: return@readCsv
+            val serviceId = row["service_id"] ?: return@readCsv
             val directionId = row["direction_id"]?.trim()?.toIntOrNull() ?: 0
             val shapeId = row["shape_id"] ?: ""
 
@@ -170,24 +180,22 @@ class GTFSReader(private val gtfsPath: String) {
             trips.add(Trip(tripId, routeId, serviceId, directionId))
             tripsData.add(InternalTrip(tripId, routeId, serviceId, directionId, shapeId, i))
             i++
-        }
-    }
+        }    }
 
     fun readStopTimes() {
-        val rows = readCsv("stop_times.txt")
         val parsed = mutableListOf<InternalStopTime>()
-        for (row in rows) {
-            val tripId = row["trip_id"] ?: continue
-            val stopId = row["stop_id"] ?: continue
-            val stopSeq = row["stop_sequence"]?.trim()?.toIntOrNull() ?: continue
+        readCsv("stop_times.txt") { row ->
+            val tripId = row["trip_id"] ?: return@readCsv
+            val stopId = row["stop_id"] ?: return@readCsv
+            val stopSeq = row["stop_sequence"]?.trim()?.toIntOrNull() ?: return@readCsv
             
             val arrTime = parseTime(row["arrival_time"])
             val depTime = parseTime(row["departure_time"]) ?: arrTime
-            if (arrTime == null || depTime == null) continue
+            if (arrTime == null || depTime == null) return@readCsv
 
             val stopIdInternal = stopIdMap[stopId]
             val tripIdInternal = tripIdMap[tripId]
-            if (stopIdInternal == null || tripIdInternal == null) continue
+            if (stopIdInternal == null || tripIdInternal == null) return@readCsv
 
             parsed.add(InternalStopTime(
                 tripId = tripId,
@@ -206,28 +214,29 @@ class GTFSReader(private val gtfsPath: String) {
     }
 
     fun readTransfers() {
-        val rows = readCsv("transfers.txt", required = false)
-        for (row in rows) {
+        readCsv("transfers.txt", required = false) { row ->
+
             transfers.add(Transfer(
-                fromStopId = row["from_stop_id"] ?: continue,
-                toStopId = row["to_stop_id"] ?: continue,
+                fromStopId = row["from_stop_id"] ?: return@readCsv,
+                toStopId = row["to_stop_id"] ?: return@readCsv,
                 minTransferTime = row["min_transfer_time"]?.trim()?.toIntOrNull() ?: 0
             ))
-        }
-    }
+        }    }
 
     fun readShapes() {
-        val rows = readCsv("shapes.txt", required = false)
-        if (rows.isEmpty()) return
-        
+        var hasRows = false
         val tempPoints = mutableListOf<Triple<String, Int, Pair<Double, Double>>>()
-        for (row in rows) {
-            val shapeId = row["shape_id"] ?: continue
-            val lat = row["shape_pt_lat"]?.trim()?.toDoubleOrNull() ?: continue
-            val lon = row["shape_pt_lon"]?.trim()?.toDoubleOrNull() ?: continue
-            val seq = row["shape_pt_sequence"]?.trim()?.toIntOrNull() ?: continue
+        readCsv("shapes.txt", required = false) { row ->
+            hasRows = true
+            val shapeId = row["shape_id"] ?: return@readCsv
+            val lat = row["shape_pt_lat"]?.trim()?.toDoubleOrNull() ?: return@readCsv
+            val lon = row["shape_pt_lon"]?.trim()?.toDoubleOrNull() ?: return@readCsv
+            val seq = row["shape_pt_sequence"]?.trim()?.toIntOrNull() ?: return@readCsv
+            
             tempPoints.add(Triple(shapeId, seq, Pair(lon, lat)))
         }
+        
+        if (!hasRows) return
         
         val grouped = tempPoints.groupBy { it.first }
         for ((shapeId, points) in grouped) {
