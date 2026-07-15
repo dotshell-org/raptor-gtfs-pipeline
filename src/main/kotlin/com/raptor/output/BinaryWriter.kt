@@ -1,7 +1,5 @@
 package com.raptor.output
 
-import com.raptor.gtfs.models.*
-import com.raptor.transform.TimeCompressor
 import java.io.OutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder

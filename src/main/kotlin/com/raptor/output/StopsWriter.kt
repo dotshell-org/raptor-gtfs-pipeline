@@ -1,10 +1,7 @@
 package com.raptor.output
 
 import com.raptor.gtfs.models.*
-import com.raptor.transform.TimeCompressor
 import java.io.OutputStream
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 
 class StopsWriter(stream: OutputStream) : BinaryWriter(stream) {
     private val magic = "RST2".toByteArray(Charsets.US_ASCII)
@@ -18,7 +15,7 @@ class StopsWriter(stream: OutputStream) : BinaryWriter(stream) {
     fun writeStop(stop: StopData): Long {
         val stopOffset = offset
 
-        writeUint32(stop.stop_id_internal)
+        writeUint32(stop.stopIdInternal)
         writeString(stop.name)
         writeFloat64(stop.lat)
         writeFloat64(stop.lon)

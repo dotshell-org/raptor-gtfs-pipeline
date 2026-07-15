@@ -4,8 +4,12 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class TripData(
-    val trip_id_internal: Int,
-    val trip_id_gtfs: String,
-    val arrival_times: List<Float>,
-    val is_partial: Boolean = false
+    @kotlinx.serialization.SerialName("trip_id_internal")
+    val tripIdInternal: Int,
+    @kotlinx.serialization.SerialName("trip_id_gtfs")
+    val tripIdGtfs: String,
+    @kotlinx.serialization.SerialName("arrival_times")
+    val arrivalTimes: List<Float>,
+    @kotlinx.serialization.SerialName("is_partial")
+    val isPartial: Boolean = false
 )

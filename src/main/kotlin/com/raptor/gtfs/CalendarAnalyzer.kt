@@ -1,10 +1,6 @@
 package com.raptor.gtfs
 
-import com.charleskorn.kaml.Yaml
-import com.raptor.gtfs.models.PeriodRule
-import com.raptor.gtfs.models.Profile
 import com.raptor.gtfs.models.ServicePeriod
-import java.io.File
 
 object CalendarAnalyzer {
     fun analyzeServicePeriods(reader: GTFSReader): List<ServicePeriod> {
@@ -18,7 +14,7 @@ object CalendarAnalyzer {
                 cal.monday, cal.tuesday, cal.wednesday,
                 cal.thursday, cal.friday, cal.saturday, cal.sunday
             )
-            patterns.computeIfAbsent(pattern) { mutableListOf() }.add(cal.service_id)
+            patterns.computeIfAbsent(pattern) { mutableListOf() }.add(cal.serviceId)
         }
 
         val periods = mutableListOf<ServicePeriod>()
@@ -54,7 +50,7 @@ object CalendarAnalyzer {
         }
 
         if (periods.isEmpty() && reader.calendarDates.isNotEmpty()) {
-            val servicesFromDates = reader.calendarDates.map { it.service_id }.distinct().sorted()
+            val servicesFromDates = reader.calendarDates.map { it.serviceId }.distinct().sorted()
             periods.add(ServicePeriod("other", servicesFromDates.toMutableList(), "Services from calendar_dates.txt"))
         }
 
@@ -63,6 +59,6 @@ object CalendarAnalyzer {
 
     fun getTripsForPeriod(reader: GTFSReader, period: ServicePeriod): Set<String> {
         val ids = period.service_ids.toSet()
-        return reader.trips.filter { it.service_id in ids }.map { it.trip_id }.toSet()
+        return reader.trips.filter { it.serviceId in ids }.map { it.tripId }.toSet()
     }
 }

@@ -60,10 +60,10 @@ object ProfileAnalyzer {
             if (cal.friday) active.add(4)
             if (cal.saturday) active.add(5)
             if (cal.sunday) active.add(6)
-            services[cal.service_id] = active
+            services[cal.serviceId] = active
         }
         for (cd in reader.calendarDates) {
-            services.putIfAbsent(cd.service_id, emptySet())
+            services.putIfAbsent(cd.serviceId, emptySet())
         }
 
         val assigned = profile.periods.keys.associateWith { mutableListOf<String>() }

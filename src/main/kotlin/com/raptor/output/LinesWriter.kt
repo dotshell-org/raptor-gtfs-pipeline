@@ -3,8 +3,6 @@ package com.raptor.output
 import com.raptor.gtfs.models.*
 import com.raptor.transform.TimeCompressor
 import java.io.OutputStream
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 
 class LinesWriter(stream: OutputStream) : BinaryWriter(stream) {
     private val magic = "RLN2".toByteArray(Charsets.US_ASCII)
@@ -19,15 +17,15 @@ class LinesWriter(stream: OutputStream) : BinaryWriter(stream) {
     fun writeLine(line: LineData, coordScale: Int): Long {
         val lineOffset = offset
 
-        writeUint32(line.line_id_internal)
+        writeUint32(line.lineIdInternal)
         writeString(line.name)
         writeString(line.color)
-        writeString(line.text_color)
-        writeUint16(line.transport_type)
+        writeString(line.textColor)
+        writeUint16(line.transportType)
         writeUint16(line.paths.size)
 
         for (path in line.paths) {
-            writeUint16(path.direction_id)
+            writeUint16(path.directionId)
             writeUint32(path.points.size)
 
             val xs = path.points.map { Math.round(it.first * coordScale).toInt() }

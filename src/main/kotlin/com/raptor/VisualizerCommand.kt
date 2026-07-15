@@ -33,7 +33,7 @@ class VisualizerCommand : CliktCommand(name = "visualize", help = "Generate HTML
             throw IllegalArgumentException("Invalid stops.bin magic")
         }
 
-        readUint16(buffer) // schema_version
+        readUint16(buffer) // schemaVersion
         val stopCount = readUint32(buffer).toInt()
 
         val stops = mutableListOf<Map<String, Any>>()
@@ -75,7 +75,7 @@ class VisualizerCommand : CliktCommand(name = "visualize", help = "Generate HTML
             throw IllegalArgumentException("Invalid routes.bin magic")
         }
 
-        readUint16(buffer) // schema_version
+        readUint16(buffer) // schemaVersion
         val routeCount = readUint32(buffer).toInt()
 
         val routes = mutableListOf<Map<String, Any>>()

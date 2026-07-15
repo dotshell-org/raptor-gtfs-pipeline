@@ -11,11 +11,11 @@ object NetworkIndexBuilder {
         val index = NetworkIndex()
         for (stop in stops) {
             if (stop.route_ids.isNotEmpty()) {
-                index.stop_to_routes[stop.stop_id_internal] = stop.route_ids.sorted().toMutableList()
+                index.stopToRoutes[stop.stopIdInternal] = stop.route_ids.sorted().toMutableList()
             }
         }
         
-        println("Built index with ${index.stop_to_routes.size} stop-to-route mappings")
+        println("Built index with ${index.stopToRoutes.size} stop-to-route mappings")
         return index
     }
 }

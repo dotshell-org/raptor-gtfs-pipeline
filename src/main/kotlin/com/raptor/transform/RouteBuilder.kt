@@ -2,23 +2,22 @@ package com.raptor.transform
 
 import com.raptor.gtfs.GTFSReader
 import com.raptor.gtfs.models.*
-import kotlin.math.*
 
 object RouteBuilder {
     fun buildRoutes(reader: GTFSReader): List<RouteData> {
         println("Building routes with canonical stop sequences")
 
         val tripSequences = reader.stopTimesData
-            .groupBy { it.trip_id }
-            .mapValues { (_, times) -> times.map { it.stop_id } }
+            .groupBy { it.tripId }
+            .mapValues { (_, times) -> times.map { it.stopId } }
 
         val routeNameLookup = reader.routes.associate {
-            it.route_id to it.route_short_name.ifBlank { it.route_long_name }
+            it.routeId to it.routeShortName.ifBlank { it.routeLongName }
         }
 
         val tripsByRouteDir = reader.tripsData
-            .groupBy { Pair(it.route_id, it.direction_id) }
-            .mapValues { (_, trips) -> trips.map { it.trip_id } }
+            .groupBy { Pair(it.routeId, it.directionId) }
+            .mapValues { (_, trips) -> trips.map { it.tripId } }
 
         val routes = mutableListOf<RouteData>()
 
@@ -33,10 +32,10 @@ object RouteBuilder {
             val canonicalStopIds = canonicalSeq.mapNotNull { reader.stopIdMap[it] }
 
             routes.add(RouteData(
-                route_id_internal = routeIdInternal,
-                route_id_gtfs = routeId,
+                routeIdInternal = routeIdInternal,
+                routeIdGtfs = routeId,
                 route_name = routeNameLookup[routeId] ?: "",
-                stop_ids = canonicalStopIds,
+                stopIds = canonicalStopIds,
                 trips = mutableListOf()
             ))
         }

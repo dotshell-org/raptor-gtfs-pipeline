@@ -1,7 +1,6 @@
 package com.raptor
 
 import com.github.ajalt.clikt.core.CliktCommand
-import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.parameters.options.*
 import com.github.ajalt.clikt.parameters.types.double
 import com.github.ajalt.clikt.parameters.types.int
@@ -79,21 +78,21 @@ class ConvertCommand : CliktCommand(name = "convert", help = "Convert GTFS to bi
             }
 
             val config = ConvertConfig(
-                input_path = actualInput,
-                output_path = output,
+                inputPath = actualInput,
+                outputPath = output,
                 format = format,
                 compression = compression,
-                debug_json = debugJson,
-                gen_transfers = genTransfers,
-                allow_partial_trips = allowPartialTrips,
-                speed_walk = speedWalk,
-                transfer_cutoff = transferCutoff,
+                debugJson = debugJson,
+                genTransfers = genTransfers,
+                allowPartialTrips = allowPartialTrips,
+                speedWalk = speedWalk,
+                transferCutoff = transferCutoff,
                 jobs = jobs,
-                split_by_periods = splitByPeriods || profile != null || pelo,
-                gen_traces = traces,
-                dry_run = dryRun,
-                flat_output = flat,
-                write_index = !noIndex && !pelo,
+                splitByPeriods = splitByPeriods || profile != null || pelo,
+                genTraces = traces,
+                dryRun = dryRun,
+                flatOutput = flat,
+                writeIndex = !noIndex && !pelo,
                 pelo = pelo
             )
 

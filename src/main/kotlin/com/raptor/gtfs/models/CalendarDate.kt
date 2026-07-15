@@ -4,7 +4,9 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class CalendarDate(
-    val service_id: String,
+    @kotlinx.serialization.SerialName("service_id")
+    val serviceId: String,
     val date: String,
-    val exception_type: Int
+    @kotlinx.serialization.SerialName("exception_type")
+    val exceptionType: Int
 )

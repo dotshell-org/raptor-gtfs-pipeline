@@ -76,9 +76,9 @@ class GTFSReader(private val gtfsPath: String) {
         
         for (row in rows) {
             agencies.add(Agency(
-                agency_id = row["agency_id"] ?: "",
-                agency_name = row["agency_name"] ?: "",
-                agency_timezone = row["agency_timezone"] ?: ""
+                agencyId = row["agency_id"] ?: "",
+                agencyName = row["agency_name"] ?: "",
+                agencyTimezone = row["agency_timezone"] ?: ""
             ))
         }
     }
@@ -95,7 +95,7 @@ class GTFSReader(private val gtfsPath: String) {
             stopIdMap[stopId] = i
             internalToStop[i] = stopId
             stops.add(Stop(
-                stop_id = stopId,
+                stopId = stopId,
                 name = row["stop_name"] ?: "",
                 lat = lat,
                 lon = lon
@@ -114,12 +114,12 @@ class GTFSReader(private val gtfsPath: String) {
             routeIdMap[routeId] = i
             internalToRoute[i] = routeId
             routes.add(Route(
-                route_id = routeId,
-                route_short_name = row["route_short_name"] ?: "",
-                route_long_name = row["route_long_name"] ?: "",
-                route_type = routeType,
-                route_color = row["route_color"] ?: "",
-                route_text_color = row["route_text_color"] ?: ""
+                routeId = routeId,
+                routeShortName = row["route_short_name"] ?: "",
+                routeLongName = row["route_long_name"] ?: "",
+                routeType = routeType,
+                routeColor = row["route_color"] ?: "",
+                routeTextColor = row["route_text_color"] ?: ""
             ))
             i++
         }
@@ -129,7 +129,7 @@ class GTFSReader(private val gtfsPath: String) {
         val rows = readCsv("calendar.txt", required = false)
         for (row in rows) {
             calendar.add(Calendar(
-                service_id = row["service_id"] ?: continue,
+                serviceId = row["service_id"] ?: continue,
                 monday = row["monday"] == "1",
                 tuesday = row["tuesday"] == "1",
                 wednesday = row["wednesday"] == "1",
@@ -137,8 +137,8 @@ class GTFSReader(private val gtfsPath: String) {
                 friday = row["friday"] == "1",
                 saturday = row["saturday"] == "1",
                 sunday = row["sunday"] == "1",
-                start_date = row["start_date"] ?: "",
-                end_date = row["end_date"] ?: ""
+                startDate = row["start_date"] ?: "",
+                endDate = row["end_date"] ?: ""
             ))
         }
     }
@@ -148,9 +148,9 @@ class GTFSReader(private val gtfsPath: String) {
         for (row in rows) {
             val exceptionType = row["exception_type"]?.trim()?.toIntOrNull() ?: continue
             calendarDates.add(CalendarDate(
-                service_id = row["service_id"] ?: continue,
+                serviceId = row["service_id"] ?: continue,
                 date = row["date"] ?: "",
-                exception_type = exceptionType
+                exceptionType = exceptionType
             ))
         }
     }
@@ -190,18 +190,18 @@ class GTFSReader(private val gtfsPath: String) {
             if (stopIdInternal == null || tripIdInternal == null) continue
 
             parsed.add(InternalStopTime(
-                trip_id = tripId,
-                stop_id = stopId,
-                arrival_time = arrTime,
-                departure_time = depTime,
-                stop_sequence = stopSeq,
-                trip_id_internal = tripIdInternal,
-                stop_id_internal = stopIdInternal
+                tripId = tripId,
+                stopId = stopId,
+                arrivalTime = arrTime,
+                departureTime = depTime,
+                stopSequence = stopSeq,
+                tripIdInternal = tripIdInternal,
+                stopIdInternal = stopIdInternal
             ))
         }
         
-        // Sorting by trip_id and stop_sequence
-        parsed.sortWith(compareBy({ it.trip_id }, { it.stop_sequence }))
+        // Sorting by tripId and stopSequence
+        parsed.sortWith(compareBy({ it.tripId }, { it.stopSequence }))
         stopTimesData = parsed
     }
 
@@ -209,9 +209,9 @@ class GTFSReader(private val gtfsPath: String) {
         val rows = readCsv("transfers.txt", required = false)
         for (row in rows) {
             transfers.add(Transfer(
-                from_stop_id = row["from_stop_id"] ?: continue,
-                to_stop_id = row["to_stop_id"] ?: continue,
-                min_transfer_time = row["min_transfer_time"]?.trim()?.toIntOrNull() ?: 0
+                fromStopId = row["from_stop_id"] ?: continue,
+                toStopId = row["to_stop_id"] ?: continue,
+                minTransferTime = row["min_transfer_time"]?.trim()?.toIntOrNull() ?: 0
             ))
         }
     }

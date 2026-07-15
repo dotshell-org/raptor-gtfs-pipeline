@@ -4,8 +4,12 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class Trip(
-    val trip_id: String,
-    val route_id: String,
-    val service_id: String,
-    val direction_id: Int = 0
+    @kotlinx.serialization.SerialName("trip_id")
+    val tripId: String,
+    @kotlinx.serialization.SerialName("route_id")
+    val routeId: String,
+    @kotlinx.serialization.SerialName("service_id")
+    val serviceId: String,
+    @kotlinx.serialization.SerialName("direction_id")
+    val directionId: Int = 0
 )

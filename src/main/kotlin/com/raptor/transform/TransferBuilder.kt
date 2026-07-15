@@ -8,13 +8,13 @@ object TransferBuilder {
     fun buildTransfers(reader: GTFSReader, stops: List<StopData>, genTransfers: Boolean = false, speedWalk: Double = 1.33, transferCutoff: Int = 500) {
         println("Building transfers")
 
-        val gtfsToInternal = stops.associate { it.stop_id_gtfs to it.stop_id_internal }
+        val gtfsToInternal = stops.associate { it.stopIdGtfs to it.stopIdInternal }
 
         for (t in reader.transfers) {
-            val fromInt = gtfsToInternal[t.from_stop_id]
-            val toInt = gtfsToInternal[t.to_stop_id]
+            val fromInt = gtfsToInternal[t.fromStopId]
+            val toInt = gtfsToInternal[t.toStopId]
             if (fromInt != null && toInt != null) {
-                stops[fromInt].transfers.add(Pair(toInt, t.min_transfer_time))
+                stops[fromInt].transfers.add(Pair(toInt, t.minTransferTime))
             }
         }
 
@@ -53,7 +53,7 @@ object TransferBuilder {
         for (i in 0 until n) {
             lats[i] = Math.toRadians(stops[i].lat).toFloat()
             lons[i] = Math.toRadians(stops[i].lon).toFloat()
-            ids[i] = stops[i].stop_id_internal
+            ids[i] = stops[i].stopIdInternal
         }
 
         // Kotlin is fast enough to do O(n^2) nested loops directly for typical GTFS sizes (e.g. 10k-20k stops)

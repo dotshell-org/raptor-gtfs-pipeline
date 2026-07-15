@@ -4,9 +4,12 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class RouteData(
-    val route_id_internal: Int,
-    val route_id_gtfs: String,
+    @kotlinx.serialization.SerialName("route_id_internal")
+    val routeIdInternal: Int,
+    @kotlinx.serialization.SerialName("route_id_gtfs")
+    val routeIdGtfs: String,
     val route_name: String,
-    val stop_ids: List<Int>,
+    @kotlinx.serialization.SerialName("stop_ids")
+    val stopIds: List<Int>,
     val trips: MutableList<TripData> = mutableListOf()
 )

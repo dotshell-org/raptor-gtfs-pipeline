@@ -2,7 +2,6 @@ package com.raptor.transform
 
 import com.raptor.gtfs.GTFSReader
 import com.raptor.gtfs.models.*
-import kotlin.math.*
 
 object LineGeometryBuilder {
     fun buildLines(reader: GTFSReader): List<LineData> {
@@ -11,8 +10,8 @@ object LineGeometryBuilder {
         }
 
         val grouped = reader.tripsData
-            .filter { it.shape_id.isNotEmpty() }
-            .groupBy( { Pair(it.route_id, it.direction_id) }, { it.shape_id } )
+            .filter { it.shapeId.isNotEmpty() }
+            .groupBy( { Pair(it.routeId, it.directionId) }, { it.shapeId } )
             .mapValues { (_, ids) -> ids.distinct() }
 
         val shapesByRoute = mutableMapOf<String, MutableMap<Int, List<String>>>()
@@ -23,7 +22,7 @@ object LineGeometryBuilder {
 
         val lines = mutableListOf<LineData>()
         for (route in reader.routes) {
-            val perDirection = shapesByRoute[route.route_id] ?: continue
+            val perDirection = shapesByRoute[route.routeId] ?: continue
             val paths = mutableListOf<LinePath>()
 
             for ((directionId, shapeIds) in perDirection.toSortedMap()) {
@@ -41,15 +40,15 @@ object LineGeometryBuilder {
 
             if (paths.isEmpty()) continue
 
-            val name = route.route_short_name.ifBlank { route.route_long_name }.ifBlank { route.route_id }
-            val routeIdInternal = reader.routeIdMap[route.route_id] ?: continue
+            val name = route.routeShortName.ifBlank { route.routeLongName }.ifBlank { route.routeId }
+            val routeIdInternal = reader.routeIdMap[route.routeId] ?: continue
 
             lines.add(LineData(
-                line_id_internal = routeIdInternal,
+                lineIdInternal = routeIdInternal,
                 name = name,
-                transport_type = route.route_type,
-                color = route.route_color,
-                text_color = route.route_text_color,
+                transportType = route.routeType,
+                color = route.routeColor,
+                textColor = route.routeTextColor,
                 paths = paths
             ))
         }

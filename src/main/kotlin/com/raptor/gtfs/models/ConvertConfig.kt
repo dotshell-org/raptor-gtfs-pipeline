@@ -4,20 +4,32 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class ConvertConfig(
-    val input_path: String,
-    val output_path: String,
+    @kotlinx.serialization.SerialName("input_path")
+    val inputPath: String,
+    @kotlinx.serialization.SerialName("output_path")
+    val outputPath: String,
     val format: String = "binary",
     val compression: Boolean = true,
-    val debug_json: Boolean = false,
-    val gen_transfers: Boolean = false,
-    val allow_partial_trips: Boolean = false,
-    val speed_walk: Double = 1.33,
-    val transfer_cutoff: Int = 500,
+    @kotlinx.serialization.SerialName("debug_json")
+    val debugJson: Boolean = false,
+    @kotlinx.serialization.SerialName("gen_transfers")
+    val genTransfers: Boolean = false,
+    @kotlinx.serialization.SerialName("allow_partial_trips")
+    val allowPartialTrips: Boolean = false,
+    @kotlinx.serialization.SerialName("speed_walk")
+    val speedWalk: Double = 1.33,
+    @kotlinx.serialization.SerialName("transfer_cutoff")
+    val transferCutoff: Int = 500,
     val jobs: Int = 1,
-    val split_by_periods: Boolean = false,
-    val gen_traces: Boolean = false,
-    val dry_run: Boolean = false,
-    val flat_output: Boolean = false,
-    val write_index: Boolean = true,
+    @kotlinx.serialization.SerialName("split_by_periods")
+    val splitByPeriods: Boolean = false,
+    @kotlinx.serialization.SerialName("gen_traces")
+    val genTraces: Boolean = false,
+    @kotlinx.serialization.SerialName("dry_run")
+    val dryRun: Boolean = false,
+    @kotlinx.serialization.SerialName("flat_output")
+    val flatOutput: Boolean = false,
+    @kotlinx.serialization.SerialName("write_index")
+    val writeIndex: Boolean = true,
     val pelo: Boolean = false
 )

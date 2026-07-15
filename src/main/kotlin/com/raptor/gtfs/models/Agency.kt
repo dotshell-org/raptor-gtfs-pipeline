@@ -4,7 +4,10 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class Agency(
-    val agency_id: String,
-    val agency_name: String,
-    val agency_timezone: String
+    @kotlinx.serialization.SerialName("agency_id")
+    val agencyId: String,
+    @kotlinx.serialization.SerialName("agency_name")
+    val agencyName: String,
+    @kotlinx.serialization.SerialName("agency_timezone")
+    val agencyTimezone: String
 )

@@ -1,11 +1,8 @@
 package com.raptor.output
 
-import com.raptor.gtfs.models.LineData
 import com.raptor.gtfs.models.NetworkIndex
 import com.raptor.gtfs.models.RouteData
 import com.raptor.gtfs.models.StopData
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 import java.io.File
 
 object ProtobufSerializer {

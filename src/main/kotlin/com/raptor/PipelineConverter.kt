@@ -21,7 +21,6 @@ import java.io.File
 import java.time.ZoneOffset
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
-import java.util.zip.ZipFile
 
 object PipelineConverter {
     fun convert(
@@ -34,26 +33,26 @@ object PipelineConverter {
         val startTime = ZonedDateTime.now(ZoneOffset.UTC)
 
         val reader = GTFSReader(inputPath)
-        reader.readAll(skipStopTimes = config.dry_run)
+        reader.readAll(skipStopTimes = config.dryRun)
 
         val periods = resolvePeriods(reader, config, periodAnalyzer)
 
-        if (config.dry_run) {
+        if (config.dryRun) {
             return printDryRunPlan(reader, periods, inputPath, startTime)
         }
 
         println("Building routes and trips from GTFS data...")
         val routes = RouteBuilder.buildRoutes(reader)
-        TripBuilder.buildAndSortTrips(reader, routes, allowPartial = config.allow_partial_trips)
+        TripBuilder.buildAndSortTrips(reader, routes, allowPartial = config.allowPartialTrips)
         val totalTrips = routes.sumOf { it.trips.size }
         println("Built ${routes.size} routes with $totalTrips trips total")
 
         var linesWritten = false
-        if (config.gen_traces) {
+        if (config.genTraces) {
             reader.readShapes()
             val lines = LineGeometryBuilder.buildLines(reader)
             if (lines.isNotEmpty()) {
-                val linesDir = if (config.flat_output && !config.pelo) File(outputPath, "raptor") else File(outputPath)
+                val linesDir = if (config.flatOutput && !config.pelo) File(outputPath, "raptor") else File(outputPath)
                 LinesSerializer.writeLinesFile(linesDir, lines, Version.SCHEMA_VERSION)
                 linesWritten = true
             } else {
@@ -86,7 +85,7 @@ object PipelineConverter {
                         periodOutput = baseOutput
                         periodSuffix = "_${period.name}"
                     }
-                    config.flat_output -> {
+                    config.flatOutput -> {
                         periodOutput = File(baseOutput, "raptor")
                         periodSuffix = "_${period.name}"
                     }
@@ -98,7 +97,7 @@ object PipelineConverter {
 
                 val manifest = writePeriodOutput(
                     reader, filteredRoutes, periodOutput, config, startTime, inputPath,
-                    periodName = period.name, suffix = periodSuffix, writeManifest = !(config.flat_output || config.pelo)
+                    periodName = period.name, suffix = periodSuffix, writeManifest = !(config.flatOutput || config.pelo)
                 )
                 manifests.add(manifest)
                 periodManifests.add(Pair(period, manifest))
@@ -131,7 +130,7 @@ object PipelineConverter {
         config: ConvertConfig,
         periodAnalyzer: ((GTFSReader) -> List<ServicePeriod>)?
     ): List<ServicePeriod>? {
-        if (!config.split_by_periods && !config.dry_run) return null
+        if (!config.splitByPeriods && !config.dryRun) return null
         val periods = if (periodAnalyzer != null) {
             println("Using custom period analyzer")
             periodAnalyzer(reader)
@@ -151,7 +150,7 @@ object PipelineConverter {
         inputPath: String,
         startTime: ZonedDateTime
     ): Manifest {
-        val tripCounts = reader.tripsData.groupingBy { it.service_id }.eachCount()
+        val tripCounts = reader.tripsData.groupingBy { it.serviceId }.eachCount()
 
         println("\nDry run — no files were written.")
         println("Input: $inputPath")
@@ -169,9 +168,9 @@ object PipelineConverter {
         }
 
         return Manifest(
-            schema_version = Version.SCHEMA_VERSION,
-            tool_version = Version.VERSION,
-            created_at_iso = startTime.format(DateTimeFormatter.ISO_INSTANT),
+            schemaVersion = Version.SCHEMA_VERSION,
+            toolVersion = Version.VERSION,
+            createdAtIso = startTime.format(DateTimeFormatter.ISO_INSTANT),
             inputs = mapOf("gtfs_path" to inputPath, "dry_run" to "true"),
             outputs = emptyMap(),
             stats = mapOf("periods" to periodCount),
@@ -182,7 +181,7 @@ object PipelineConverter {
     private fun filterRoutesByTrips(routes: List<RouteData>, periodTripIds: Set<String>): List<RouteData> {
         val filteredRoutes = mutableListOf<RouteData>()
         for (route in routes) {
-            val filteredTrips = route.trips.filter { it.trip_id_gtfs in periodTripIds }.toMutableList()
+            val filteredTrips = route.trips.filter { it.tripIdGtfs in periodTripIds }.toMutableList()
             if (filteredTrips.isNotEmpty()) {
                 filteredRoutes.add(route.copy(trips = filteredTrips))
             }
@@ -202,7 +201,7 @@ object PipelineConverter {
         writeManifest: Boolean = true
     ): Manifest {
         val stops = StopBuilder.buildStops(reader, routes)
-        TransferBuilder.buildTransfers(reader, stops, config.gen_transfers, config.speed_walk, config.transfer_cutoff)
+        TransferBuilder.buildTransfers(reader, stops, config.genTransfers, config.speedWalk, config.transferCutoff)
 
         val index = NetworkIndexBuilder.buildNetworkIndex(routes, stops)
 
@@ -210,13 +209,13 @@ object PipelineConverter {
 
         if (config.format == "binary" || config.format == "both") {
             filesWritten.putAll(BinarySerializer.writeBinaryFiles(
-                outputPath, routes, stops, index, Version.SCHEMA_VERSION, config.compression, suffix, config.write_index
+                outputPath, routes, stops, index, Version.SCHEMA_VERSION, config.compression, suffix, config.writeIndex
             ))
         }
 
-        if (config.format == "json" || config.format == "both" || config.debug_json) {
+        if (config.format == "json" || config.format == "both" || config.debugJson) {
             filesWritten.putAll(JsonSerializer.writeJsonFiles(
-                outputPath, routes, stops, index, suffix, config.write_index
+                outputPath, routes, stops, index, suffix, config.writeIndex
             ))
         }
 
@@ -232,7 +231,7 @@ object PipelineConverter {
             "stops" to stops.size,
             "routes" to routes.size,
             "trips" to routes.sumOf { it.trips.size },
-            "stop_times" to routes.sumOf { it.stop_ids.size * it.trips.size },
+            "stop_times" to routes.sumOf { it.stopIds.size * it.trips.size },
             "transfers" to stops.sumOf { it.transfers.size }
         )
 
@@ -242,9 +241,9 @@ object PipelineConverter {
         }
 
         val manifest = Manifest(
-            schema_version = Version.SCHEMA_VERSION,
-            tool_version = Version.VERSION,
-            created_at_iso = startTime.format(DateTimeFormatter.ISO_INSTANT),
+            schemaVersion = Version.SCHEMA_VERSION,
+            toolVersion = Version.VERSION,
+            createdAtIso = startTime.format(DateTimeFormatter.ISO_INSTANT),
             inputs = manifestInputs,
             outputs = checksums,
             stats = stats,
@@ -277,7 +276,7 @@ object PipelineConverter {
         startTime: ZonedDateTime
     ) {
         val layout = when {
-            config.flat_output -> "flat"
+            config.flatOutput -> "flat"
             periodManifests.size == 1 && periodManifests[0].first.name == "all" -> "single"
             else -> "nested"
         }
@@ -301,8 +300,10 @@ object PipelineConverter {
 
         @kotlinx.serialization.Serializable
         data class DatasetIndex(
-            val schema_version: Int,
-            val tool_version: String,
+            @kotlinx.serialization.SerialName("schema_version")
+            val schemaVersion: Int,
+            @kotlinx.serialization.SerialName("tool_version")
+            val toolVersion: String,
             val created_at: String,
             val input: Map<String, String>,
             val layout: String,
@@ -340,8 +341,8 @@ object PipelineConverter {
         } else null
 
         val index = DatasetIndex(
-            schema_version = Version.SCHEMA_VERSION,
-            tool_version = Version.VERSION,
+            schemaVersion = Version.SCHEMA_VERSION,
+            toolVersion = Version.VERSION,
             created_at = startTime.format(DateTimeFormatter.ISO_INSTANT),
             input = mapOf("gtfs_path" to inputPath),
             layout = layout,

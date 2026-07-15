@@ -1,9 +1,5 @@
 package com.raptor.transform
 
-import com.raptor.gtfs.GTFSReader
-import com.raptor.gtfs.models.*
-import kotlin.math.*
-
 object TimeCompressor {
     fun encodeTimes(times: List<Int>): List<Int> {
         if (times.isEmpty()) return emptyList()

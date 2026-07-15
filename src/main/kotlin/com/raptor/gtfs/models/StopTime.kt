@@ -4,9 +4,14 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class StopTime(
-    val trip_id: String,
-    val stop_id: String,
-    val arrival_time: Int,
-    val departure_time: Int,
-    val stop_sequence: Int
+    @kotlinx.serialization.SerialName("trip_id")
+    val tripId: String,
+    @kotlinx.serialization.SerialName("stop_id")
+    val stopId: String,
+    @kotlinx.serialization.SerialName("arrival_time")
+    val arrivalTime: Int,
+    @kotlinx.serialization.SerialName("departure_time")
+    val departureTime: Int,
+    @kotlinx.serialization.SerialName("stop_sequence")
+    val stopSequence: Int
 )

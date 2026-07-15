@@ -4,8 +4,10 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class StopData(
-    val stop_id_internal: Int,
-    val stop_id_gtfs: String,
+    @kotlinx.serialization.SerialName("stop_id_internal")
+    val stopIdInternal: Int,
+    @kotlinx.serialization.SerialName("stop_id_gtfs")
+    val stopIdGtfs: String,
     val name: String,
     val lat: Double,
     val lon: Double,

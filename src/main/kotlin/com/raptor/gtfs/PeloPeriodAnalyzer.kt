@@ -1,10 +1,6 @@
 package com.raptor.gtfs
 
-import com.charleskorn.kaml.Yaml
-import com.raptor.gtfs.models.PeriodRule
-import com.raptor.gtfs.models.Profile
 import com.raptor.gtfs.models.ServicePeriod
-import java.io.File
 
 object PeloPeriodAnalyzer {
     private val SCHOOL_WEEKDAY = Regex("-[0-9A-Za-z]+M-")
@@ -14,10 +10,10 @@ object PeloPeriodAnalyzer {
         if (reader.calendar.isEmpty()) return emptyList()
 
         val jdRoutes = reader.routes
-            .filter { it.route_short_name.startsWith("JD") || "-JD" in it.route_short_name }
-            .map { it.route_id }.toSet()
+            .filter { it.routeShortName.startsWith("JD") || "-JD" in it.routeShortName }
+            .map { it.routeId }.toSet()
 
-        val serviceToRoutes = reader.trips.groupBy({ it.service_id }, { it.route_id })
+        val serviceToRoutes = reader.trips.groupBy({ it.serviceId }, { it.routeId })
             .mapValues { it.value.toSet() }
 
         val schoolOn = mutableSetOf<String>()
@@ -26,7 +22,7 @@ object PeloPeriodAnalyzer {
         val sundays = mutableSetOf<String>()
 
         for (cal in reader.calendar) {
-            val sid = cal.service_id
+            val sid = cal.serviceId
             val routesForService = serviceToRoutes[sid] ?: emptySet()
             val isJdOnly = routesForService.isNotEmpty() && jdRoutes.containsAll(routesForService)
             val hasWeekday = cal.monday || cal.tuesday || cal.wednesday || cal.thursday || cal.friday

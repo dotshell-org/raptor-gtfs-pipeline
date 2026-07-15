@@ -4,9 +4,12 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class Manifest(
-    val schema_version: Int,
-    val tool_version: String,
-    val created_at_iso: String,
+    @kotlinx.serialization.SerialName("schema_version")
+    val schemaVersion: Int,
+    @kotlinx.serialization.SerialName("tool_version")
+    val toolVersion: String,
+    @kotlinx.serialization.SerialName("created_at_iso")
+    val createdAtIso: String,
     val inputs: Map<String, String>, // Changed from Any since JSON serializes map of strings mostly
     val outputs: Map<String, String>,
     val stats: Map<String, Int>,

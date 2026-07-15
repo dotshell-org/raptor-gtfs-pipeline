@@ -4,10 +4,13 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class LineData(
-    val line_id_internal: Int,
+    @kotlinx.serialization.SerialName("line_id_internal")
+    val lineIdInternal: Int,
     val name: String,
-    val transport_type: Int,
+    @kotlinx.serialization.SerialName("transport_type")
+    val transportType: Int,
     val color: String = "",
-    val text_color: String = "",
+    @kotlinx.serialization.SerialName("text_color")
+    val textColor: String = "",
     val paths: MutableList<LinePath> = mutableListOf()
 )

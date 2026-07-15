@@ -4,7 +4,8 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class Calendar(
-    val service_id: String,
+    @kotlinx.serialization.SerialName("service_id")
+    val serviceId: String,
     val monday: Boolean,
     val tuesday: Boolean,
     val wednesday: Boolean,
@@ -12,6 +13,8 @@ data class Calendar(
     val friday: Boolean,
     val saturday: Boolean,
     val sunday: Boolean,
-    val start_date: String,
-    val end_date: String
+    @kotlinx.serialization.SerialName("start_date")
+    val startDate: String,
+    @kotlinx.serialization.SerialName("end_date")
+    val endDate: String
 )

@@ -1,11 +1,8 @@
 package com.raptor.output
 
-import com.raptor.gtfs.models.LineData
 import com.raptor.gtfs.models.NetworkIndex
 import com.raptor.gtfs.models.RouteData
 import com.raptor.gtfs.models.StopData
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 import java.io.File
 
 object BinarySerializer {
@@ -30,7 +27,7 @@ object BinarySerializer {
             writer.writeHeader(schemaVersion, routes.size)
             for (route in routes) {
                 val routeOffset = writer.writeRoute(route, compression)
-                index.route_offsets[route.route_id_internal] = routeOffset.toInt()
+                index.routeOffsets[route.routeIdInternal] = routeOffset.toInt()
             }
         }
         filesWritten[routesName] = routesPath.absolutePath
@@ -42,7 +39,7 @@ object BinarySerializer {
             writer.writeHeader(schemaVersion, stops.size)
             for (stop in stops) {
                 val stopOffset = writer.writeStop(stop)
-                index.stop_offsets[stop.stop_id_internal] = stopOffset.toInt()
+                index.stopOffsets[stop.stopIdInternal] = stopOffset.toInt()
             }
         }
         filesWritten[stopsName] = stopsPath.absolutePath
