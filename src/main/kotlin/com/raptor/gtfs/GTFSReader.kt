@@ -4,25 +4,6 @@ import com.github.doyaaaaaken.kotlincsv.dsl.csvReader
 import com.raptor.gtfs.models.*
 import java.io.File
 
-data class InternalTrip(
-    val trip_id: String,
-    val route_id: String,
-    val service_id: String,
-    val direction_id: Int,
-    val shape_id: String,
-    val trip_id_internal: Int
-)
-
-data class InternalStopTime(
-    val trip_id: String,
-    val stop_id: String,
-    val arrival_time: Int,
-    val departure_time: Int,
-    val stop_sequence: Int,
-    val trip_id_internal: Int,
-    val stop_id_internal: Int
-)
-
 class GTFSReader(private val gtfsPath: String) {
     private val gtfsDir = File(gtfsPath)
     init {

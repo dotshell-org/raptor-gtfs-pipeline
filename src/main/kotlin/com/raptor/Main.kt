@@ -15,12 +15,6 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.util.zip.ZipFile
 
-class CommandLineInterface : CliktCommand(name = "raptor-gtfs", help = "Convert GTFS datasets to RAPTOR binary format") {
-    private val verbose by option("-v", "--verbose", help = "Verbose output").flag()
-
-    override fun run() {
-        if (verbose) {
-            println("Verbose mode enabled")
-        }
-    }
+fun main(args: Array<String>) {
+    CommandLineInterface().subcommands(ConvertCommand(), VisualizerCommand()).main(args)
 }
