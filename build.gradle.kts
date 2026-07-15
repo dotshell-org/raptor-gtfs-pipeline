@@ -32,5 +32,5 @@ kotlin {
 }
 
 application {
-    mainClass.set("com.raptor.CommandLineInterfaceKt")
+    mainClass.set("com.raptor.MainKt")
 }
