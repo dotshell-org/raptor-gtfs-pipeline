@@ -26,7 +26,7 @@ class ConvertCommand : CliktCommand(name = "convert", help = "Convert GTFS to bi
     private val transferCutoff by option("--transfer-cutoff", help = "Transfer generation cutoff in meters").int().default(500)
     private val jobs by option("--jobs", help = "Number of parallel jobs").int().default(1)
     private val splitByPeriods by option("--split-by-periods", help = "Generate separate folders per service period").flag(default = false)
-    private val traces by option("--traces", "--tracés", help = "Generate line geometry from shapes.txt").flag(default = false)
+    private val traces by option("--traces", help = "Generate line geometry from shapes.txt").flag(default = false)
     private val dryRun by option("--dry-run", help = "Print the service-period plan without writing any files").flag(default = false)
     private val profile by option("--profile", help = "Path to a YAML period profile")
     private val flat by option("--flat", help = "Group app-ready per-period files under raptor/").flag(default = false)
