@@ -20,8 +20,8 @@ class StopsWriter(stream: OutputStream) : BinaryWriter(stream) {
         writeFloat64(stop.lat)
         writeFloat64(stop.lon)
 
-        writeUint32(stop.route_ids.size)
-        for (routeId in stop.route_ids) writeUint32(routeId)
+        writeUint32(stop.routeIds.size)
+        for (routeId in stop.routeIds) writeUint32(routeId)
 
         writeUint32(stop.transfers.size)
         for ((targetStop, walkTime) in stop.transfers) {

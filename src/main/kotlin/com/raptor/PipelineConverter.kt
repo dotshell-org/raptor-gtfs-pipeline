@@ -69,7 +69,7 @@ object PipelineConverter {
                 println("\n============================================================")
                 println("Processing period: ${period.name}")
                 println("Description: ${period.description}")
-                println("Services: ${period.service_ids.size}")
+                println("Services: ${period.serviceIds.size}")
                 println("============================================================\n")
 
                 val periodTripIds = CalendarAnalyzer.getTripsForPeriod(reader, period)
@@ -161,8 +161,8 @@ object PipelineConverter {
         } else {
             println("Would generate ${periods.size} period folder(s):")
             for (period in periods) {
-                val nTrips = period.service_ids.sumOf { tripCounts[it] ?: 0 }
-                println("  ${period.name.padEnd(22)} ${period.service_ids.size.toString().padStart(4)} service(s)  ${nTrips.toString().padStart(8)} trips   ${period.description}")
+                val nTrips = period.serviceIds.sumOf { tripCounts[it] ?: 0 }
+                println("  ${period.name.padEnd(22)} ${period.serviceIds.size.toString().padStart(4)} service(s)  ${nTrips.toString().padStart(8)} trips   ${period.description}")
             }
             periodCount = periods.size
         }
@@ -304,7 +304,7 @@ object PipelineConverter {
             val schemaVersion: Int,
             @kotlinx.serialization.SerialName("tool_version")
             val toolVersion: String,
-            val created_at: String,
+            val createdAt: String,
             val input: Map<String, String>,
             val layout: String,
             val lines: Map<String, String>?,
@@ -343,7 +343,7 @@ object PipelineConverter {
         val index = DatasetIndex(
             schemaVersion = Version.SCHEMA_VERSION,
             toolVersion = Version.VERSION,
-            created_at = startTime.format(DateTimeFormatter.ISO_INSTANT),
+            createdAt = startTime.format(DateTimeFormatter.ISO_INSTANT),
             input = mapOf("gtfs_path" to inputPath),
             layout = layout,
             lines = linesMap,

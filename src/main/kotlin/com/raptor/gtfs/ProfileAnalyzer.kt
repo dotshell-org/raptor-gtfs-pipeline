@@ -40,7 +40,7 @@ object ProfileAnalyzer {
     }
 
     private fun matches(rule: PeriodRule, serviceId: String, activeDays: Set<Int>): Boolean {
-        if (rule.service_id_matches != null && !Regex(rule.service_id_matches).containsMatchIn(serviceId)) {
+        if (rule.serviceIdMatches != null && !Regex(rule.serviceIdMatches).containsMatchIn(serviceId)) {
             return false
         }
         if (rule.days.isNotEmpty() && activeDays.intersect(parseDays(rule.days)).isEmpty()) {

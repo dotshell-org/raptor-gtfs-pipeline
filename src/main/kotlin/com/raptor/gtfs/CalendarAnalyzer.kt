@@ -58,7 +58,7 @@ object CalendarAnalyzer {
     }
 
     fun getTripsForPeriod(reader: GTFSReader, period: ServicePeriod): Set<String> {
-        val ids = period.service_ids.toSet()
+        val ids = period.serviceIds.toSet()
         return reader.trips.filter { it.serviceId in ids }.map { it.tripId }.toSet()
     }
 }

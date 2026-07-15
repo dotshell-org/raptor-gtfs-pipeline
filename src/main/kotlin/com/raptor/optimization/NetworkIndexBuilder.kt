@@ -10,8 +10,8 @@ object NetworkIndexBuilder {
         
         val index = NetworkIndex()
         for (stop in stops) {
-            if (stop.route_ids.isNotEmpty()) {
-                index.stopToRoutes[stop.stopIdInternal] = stop.route_ids.sorted().toMutableList()
+            if (stop.routeIds.isNotEmpty()) {
+                index.stopToRoutes[stop.stopIdInternal] = stop.routeIds.sorted().toMutableList()
             }
         }
         

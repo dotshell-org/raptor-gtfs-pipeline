@@ -17,7 +17,7 @@ class RoutesWriter(stream: OutputStream) : BinaryWriter(stream) {
         val routeOffset = offset
 
         writeUint32(route.routeIdInternal)
-        writeString(route.route_name)
+        writeString(route.routeName)
         writeUint32(route.stopIds.size)
         writeUint32(route.trips.size)
 

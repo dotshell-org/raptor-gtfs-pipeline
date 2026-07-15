@@ -34,7 +34,7 @@ object RouteBuilder {
             routes.add(RouteData(
                 routeIdInternal = routeIdInternal,
                 routeIdGtfs = routeId,
-                route_name = routeNameLookup[routeId] ?: "",
+                routeName = routeNameLookup[routeId] ?: "",
                 stopIds = canonicalStopIds,
                 trips = mutableListOf()
             ))
