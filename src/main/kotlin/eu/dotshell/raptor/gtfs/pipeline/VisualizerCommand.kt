@@ -29,9 +29,11 @@ class VisualizerCommand : CliktCommand(name = "visualize", help = "Generate HTML
         
         val magic = ByteArray(4)
         buffer.get(magic)
-        if (String(magic, Charsets.US_ASCII) != "RST2") {
+        val magicStr = String(magic, Charsets.US_ASCII)
+        if (magicStr != "RST2" && magicStr != "RST3") {
             throw IllegalArgumentException("Invalid stops.bin magic")
         }
+        val hasZone = magicStr == "RST3"
 
         readUint16(buffer) // schemaVersion
         val stopCount = readUint32(buffer).toInt()
@@ -42,6 +44,7 @@ class VisualizerCommand : CliktCommand(name = "visualize", help = "Generate HTML
             val name = readString(buffer)
             val lat = readFloat64(buffer)
             val lon = readFloat64(buffer)
+            val zone = if (hasZone) readString(buffer) else ""
 
             val routeCount = readUint32(buffer).toInt()
             val routeIds = (0 until routeCount).map { readUint32(buffer).toInt() }
@@ -58,6 +61,7 @@ class VisualizerCommand : CliktCommand(name = "visualize", help = "Generate HTML
                 "name" to name,
                 "lat" to lat,
                 "lon" to lon,
+                "zone" to zone,
                 "route_ids" to routeIds,
                 "transfers" to transfers
             ))

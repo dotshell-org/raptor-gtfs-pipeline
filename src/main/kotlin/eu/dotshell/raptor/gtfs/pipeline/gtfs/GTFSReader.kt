@@ -108,7 +108,8 @@ class GTFSReader(private val gtfsPath: String) {
                 stopId = stopId,
                 name = row["stop_name"] ?: "",
                 lat = lat,
-                lon = lon
+                lon = lon,
+                zoneId = row["zone_id"]?.trim()?.takeIf { it.isNotEmpty() }
             ))
             i++
         }    }

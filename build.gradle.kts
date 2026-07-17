@@ -21,6 +21,8 @@ dependencies {
     implementation("com.github.ajalt.clikt:clikt:4.2.2")
     
     testImplementation(kotlin("test"))
+    // Gradle 9 no longer bundles the JUnit Platform launcher on the test runtime classpath.
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 tasks.test {

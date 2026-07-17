@@ -58,6 +58,7 @@ Thumbs.db
 *.zip
 profiles/gtfs/*.zip
 profiles/gtfs/*/
+GTFS_TCL/
 
 # Temp extraction dirs
 temp_gtfs/

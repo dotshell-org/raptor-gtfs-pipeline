@@ -11,6 +11,7 @@ data class StopData(
     val name: String,
     val lat: Double,
     val lon: Double,
+    val zone: String? = null,
     val routeIds: MutableList<Int> = mutableListOf(),
     // Pair of (target_stop_id, walk_time)
     val transfers: MutableList<Pair<Int, Int>> = mutableListOf()

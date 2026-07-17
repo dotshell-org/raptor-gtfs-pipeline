@@ -8,5 +8,7 @@ data class Stop(
     val stopId: String,
     val name: String,
     val lat: Double,
-    val lon: Double
+    val lon: Double,
+    @kotlinx.serialization.SerialName("zone_id")
+    val zoneId: String? = null
 )

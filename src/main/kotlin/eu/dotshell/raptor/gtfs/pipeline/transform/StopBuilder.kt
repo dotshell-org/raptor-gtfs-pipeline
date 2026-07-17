@@ -26,6 +26,7 @@ object StopBuilder {
                 name = stop.name,
                 lat = stop.lat,
                 lon = stop.lon,
+                zone = stop.zoneId,
                 routeIds = routeIds,
                 transfers = mutableListOf()
             ))

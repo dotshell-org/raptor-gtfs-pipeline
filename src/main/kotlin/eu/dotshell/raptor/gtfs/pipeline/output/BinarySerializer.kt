@@ -1,5 +1,6 @@
 package eu.dotshell.raptor.gtfs.pipeline.output
 
+import eu.dotshell.raptor.gtfs.pipeline.Version
 import eu.dotshell.raptor.gtfs.pipeline.gtfs.models.NetworkIndex
 import eu.dotshell.raptor.gtfs.pipeline.gtfs.models.RouteData
 import eu.dotshell.raptor.gtfs.pipeline.gtfs.models.StopData
@@ -36,7 +37,8 @@ object BinarySerializer {
         val stopsPath = File(outputPath, stopsName)
         stopsPath.outputStream().use { f ->
             val writer = StopsWriter(f)
-            writer.writeHeader(schemaVersion, stops.size)
+            // Stops use their own format version (RST3); routes/index keep `schemaVersion`.
+            writer.writeHeader(Version.STOPS_SCHEMA_VERSION, stops.size)
             for (stop in stops) {
                 val stopOffset = writer.writeStop(stop)
                 index.stopOffsets[stop.stopIdInternal] = stopOffset.toInt()

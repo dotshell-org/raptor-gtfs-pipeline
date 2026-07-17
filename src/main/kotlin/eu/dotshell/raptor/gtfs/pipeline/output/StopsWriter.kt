@@ -4,7 +4,9 @@ import eu.dotshell.raptor.gtfs.pipeline.gtfs.models.*
 import java.io.OutputStream
 
 class StopsWriter(stream: OutputStream) : BinaryWriter(stream) {
-    private val magic = "RST2".toByteArray(Charsets.US_ASCII)
+    // RST3 (v3) adds a per-stop fare zone string after the lon field. The rest of the
+    // record is byte-identical to RST2 so downstream readers keep the same layout.
+    private val magic = "RST3".toByteArray(Charsets.US_ASCII)
 
     fun writeHeader(schemaVersion: Int, stopCount: Int) {
         writeBytes(magic)
@@ -19,6 +21,7 @@ class StopsWriter(stream: OutputStream) : BinaryWriter(stream) {
         writeString(stop.name)
         writeFloat64(stop.lat)
         writeFloat64(stop.lon)
+        writeString(stop.zone ?: "")
 
         writeUint32(stop.routeIds.size)
         for (routeId in stop.routeIds) writeUint32(routeId)
