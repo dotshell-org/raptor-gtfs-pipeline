@@ -4,7 +4,7 @@ plugins {
     application
 }
 
-group = "com.raptor"
+group = "eu.dotshell.raptor.gtfs.pipeline"
 version = "0.1.0"
 
 repositories {
@@ -32,5 +32,5 @@ kotlin {
 }
 
 application {
-    mainClass.set("com.raptor.MainKt")
+    mainClass.set("eu.dotshell.raptor.gtfs.pipeline.MainKt")
 }
