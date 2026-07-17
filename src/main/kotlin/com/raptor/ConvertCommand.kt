@@ -67,8 +67,10 @@ class ConvertCommand : CliktCommand(name = "convert", help = "Convert GTFS to bi
             }
 
             var periodAnalyzer: ((GTFSReader) -> List<ServicePeriod>)? = null
+            var profileOptions: com.raptor.gtfs.models.ProfileOptions? = null
             if (profile != null) {
                 val loadedProfile = ProfileAnalyzer.load(profile!!)
+                profileOptions = loadedProfile.options
                 periodAnalyzer = { reader -> ProfileAnalyzer.build(loadedProfile, reader) }
             }
 
@@ -86,8 +88,8 @@ class ConvertCommand : CliktCommand(name = "convert", help = "Convert GTFS to bi
                 splitByPeriods = splitByPeriods || profile != null,
                 genTraces = traces,
                 dryRun = dryRun,
-                flatOutput = flat,
-                writeIndex = !noIndex
+                flatOutput = flat || (profileOptions?.flatOutput ?: false),
+                writeIndex = !noIndex && (profileOptions?.writeIndex ?: true)
             )
 
             val manifest = PipelineConverter.convert(actualInput, output, config, periodAnalyzer)

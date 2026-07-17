@@ -1,4 +1,7 @@
 network: lyon-tcl
+options:
+  flat_output: true
+  write_index: false
 periods:
   saturday:
     description: Saturday service
