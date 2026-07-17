@@ -1,20 +1,35 @@
-# Lyon TCL — school-term / holiday profile.
-# Combines day-of-week with a service_id regex to split weekdays into
-# school-term vs school-holiday service (matches the app's 4 periods).
 network: lyon-tcl
 periods:
   saturday:
-    days: [sat]
     description: Saturday service
+    days: [sat]
   sunday:
+    description: Sunday service
     days: [sun]
-    description: Sunday and holidays service
   school_on_weekdays:
-    days: [mon-fri]
-    service_id_matches: "-M-$"
     description: Weekdays during school term
+    rules:
+      - days: [mon-fri]
+        serviceIdMatches: "-M-$"
+      - days: [mon-fri]
+        activeInMonths: [9]
+        notActiveInMonths: [8]
+      - days: [mon-fri]
+        activeInMonths: [8, 9]
+      - days: [mon-fri]
+        notActiveInMonths: [8, 9]
+        minDurationMonths: 2
   school_off_weekdays:
-    days: [mon-fri]
-    service_id_matches: "-[VW]-$"
     description: Weekdays during school holidays
-unmatched: other
+    rules:
+      - days: [mon-fri]
+        serviceIdMatches: "-[VW]-$"
+      - days: [mon-fri]
+        activeInMonths: [8]
+        notActiveInMonths: [9]
+      - days: [mon-fri]
+        activeInMonths: [8, 9]
+      - days: [mon-fri]
+        notActiveInMonths: [8, 9]
+        maxDurationMonths: 1
+unmatched: warn

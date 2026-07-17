@@ -65,26 +65,6 @@ A **declarative YAML profile** lets you say precisely which services go into whi
 ./gradlew run --args="convert --input /path/to/gtfs --profile profiles/marseille.yaml"
 ```
 
-## Pelo app preset (`--pelo`)
-
-`--pelo` produces exactly what the Pelo app loads. It is specifically tailored for the TCL (Lyon) network and automatically groups services into four periods:
-`saturday`, `sunday`, `school_on_weekdays`, `school_off_weekdays`.
-
-```bash
-./gradlew run --args="convert --input /path/to/gtfs --output ./raptor --pelo"
-```
-
-```text
-raptor/
-├─ routes_saturday.bin              stops_saturday.bin
-├─ routes_sunday.bin                stops_sunday.bin
-├─ routes_school_on_weekdays.bin    stops_school_on_weekdays.bin
-└─ routes_school_off_weekdays.bin   stops_school_off_weekdays.bin
-```
-
-- Exactly four periods: `saturday`, `sunday`, `school_on_weekdays`, `school_off_weekdays` — flat at the root.
-- **Advanced School vs Vacation heuristics**: Due to recent changes in TCL's GTFS, the pipeline analyzes service bounding dates (August vs September) to flawlessly separate school trips from vacation trips without overlap.
-
 ## Dataset index (`dataset.json`)
 
 Every run writes a self-describing `dataset.json` at the output root, so a consumer can discover what was produced without guessing folder names.

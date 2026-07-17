@@ -4,6 +4,7 @@ import com.charleskorn.kaml.Yaml
 import com.raptor.gtfs.models.PeriodRule
 import com.raptor.gtfs.models.Profile
 import com.raptor.gtfs.models.ServicePeriod
+import com.raptor.gtfs.models.Calendar
 import java.io.File
 
 object ProfileAnalyzer {
@@ -39,18 +40,58 @@ object ProfileAnalyzer {
         return result
     }
 
-    private fun matches(rule: PeriodRule, serviceId: String, activeDays: Set<Int>): Boolean {
+    private fun matchesRule(rule: PeriodRule, serviceId: String, activeDays: Set<Int>, cal: Calendar?): Boolean {
         if (rule.serviceIdMatches != null && !Regex(rule.serviceIdMatches).containsMatchIn(serviceId)) {
             return false
         }
         if (rule.days.isNotEmpty() && activeDays.intersect(parseDays(rule.days)).isEmpty()) {
             return false
         }
+        
+        if (cal != null && cal.startDate.length == 8 && cal.endDate.length == 8) {
+            val sYear = cal.startDate.substring(0, 4).toIntOrNull() ?: 0
+            val eYear = cal.endDate.substring(0, 4).toIntOrNull() ?: 0
+            val sMonth = cal.startDate.substring(4, 6).toIntOrNull() ?: 0
+            val eMonth = cal.endDate.substring(4, 6).toIntOrNull() ?: 0
+            
+            val activeMonths = mutableSetOf<Int>()
+            var currY = sYear
+            var currM = sMonth
+            while (currY < eYear || (currY == eYear && currM <= eMonth)) {
+                activeMonths.add(currM)
+                currM++
+                if (currM > 12) {
+                    currM = 1
+                    currY++
+                }
+            }
+
+            if (rule.activeInMonths != null) {
+                if (activeMonths.intersect(rule.activeInMonths.toSet()).isEmpty()) return false
+            }
+            if (rule.notActiveInMonths != null) {
+                if (activeMonths.intersect(rule.notActiveInMonths.toSet()).isNotEmpty()) return false
+            }
+            
+            val durationMonths = (eYear - sYear) * 12 + (eMonth - sMonth)
+            if (rule.maxDurationMonths != null && durationMonths > rule.maxDurationMonths) {
+                return false
+            }
+            if (rule.minDurationMonths != null && durationMonths < rule.minDurationMonths) {
+                return false
+            }
+        } else if (cal == null && (rule.activeInMonths != null || rule.notActiveInMonths != null || rule.maxDurationMonths != null || rule.minDurationMonths != null)) {
+            // Cannot evaluate date-based rules without a calendar entry
+            return false
+        }
+
         return true
     }
 
     fun build(profile: Profile, reader: GTFSReader): List<ServicePeriod> {
         val services = mutableMapOf<String, Set<Int>>()
+        val calendars = reader.calendar.associateBy { it.serviceId }
+        
         for (cal in reader.calendar) {
             val active = mutableSetOf<Int>()
             if (cal.monday) active.add(0)
@@ -70,8 +111,23 @@ object ProfileAnalyzer {
         val matched = mutableSetOf<String>()
 
         for ((serviceId, activeDays) in services) {
-            for ((name, rule) in profile.periods) {
-                if (matches(rule, serviceId, activeDays)) {
+            val cal = calendars[serviceId]
+            for ((name, def) in profile.periods) {
+                val effectiveRules = def.getEffectiveRules()
+                var anyMatch = false
+                if (effectiveRules.isEmpty()) {
+                    // if no rules, it matches everything (fallback behavior)
+                    anyMatch = true
+                } else {
+                    for (rule in effectiveRules) {
+                        if (matchesRule(rule, serviceId, activeDays, cal)) {
+                            anyMatch = true
+                            break
+                        }
+                    }
+                }
+                
+                if (anyMatch) {
                     assigned[name]!!.add(serviceId)
                     matched.add(serviceId)
                 }

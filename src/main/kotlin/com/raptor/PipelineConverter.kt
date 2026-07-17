@@ -52,7 +52,7 @@ object PipelineConverter {
             reader.readShapes()
             val lines = LineGeometryBuilder.buildLines(reader)
             if (lines.isNotEmpty()) {
-                val linesDir = if (config.flatOutput && !config.pelo) File(outputPath, "raptor") else File(outputPath)
+                val linesDir = if (config.flatOutput) File(outputPath, "raptor") else File(outputPath)
                 LinesSerializer.writeLinesFile(linesDir, lines, Version.SCHEMA_VERSION)
                 linesWritten = true
             } else {
@@ -81,10 +81,6 @@ object PipelineConverter {
                 val periodOutput: File
                 val periodSuffix: String
                 when {
-                    config.pelo -> {
-                        periodOutput = baseOutput
-                        periodSuffix = "_${period.name}"
-                    }
                     config.flatOutput -> {
                         periodOutput = File(baseOutput, "raptor")
                         periodSuffix = "_${period.name}"
@@ -97,15 +93,13 @@ object PipelineConverter {
 
                 val manifest = writePeriodOutput(
                     reader, filteredRoutes, periodOutput, config, startTime, inputPath,
-                    periodName = period.name, suffix = periodSuffix, writeManifest = !(config.flatOutput || config.pelo)
+                    periodName = period.name, suffix = periodSuffix, writeManifest = !config.flatOutput
                 )
                 manifests.add(manifest)
                 periodManifests.add(Pair(period, manifest))
             }
 
-            if (!config.pelo) {
-                writeRootIndex(baseOutput, config, periodManifests, linesWritten, inputPath, startTime)
-            }
+            writeRootIndex(baseOutput, config, periodManifests, linesWritten, inputPath, startTime)
 
             println("\n============================================================")
             println("Generated ${manifests.size} period folders:")

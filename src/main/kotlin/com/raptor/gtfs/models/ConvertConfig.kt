@@ -30,6 +30,5 @@ data class ConvertConfig(
     @kotlinx.serialization.SerialName("flat_output")
     val flatOutput: Boolean = false,
     @kotlinx.serialization.SerialName("write_index")
-    val writeIndex: Boolean = true,
-    val pelo: Boolean = false
+    val writeIndex: Boolean = true
 )

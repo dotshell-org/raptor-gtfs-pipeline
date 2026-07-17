@@ -5,7 +5,6 @@ import com.github.ajalt.clikt.parameters.options.*
 import com.github.ajalt.clikt.parameters.types.double
 import com.github.ajalt.clikt.parameters.types.int
 import com.raptor.gtfs.GTFSReader
-import com.raptor.gtfs.PeloPeriodAnalyzer
 import com.raptor.gtfs.ProfileAnalyzer
 import com.raptor.gtfs.models.ConvertConfig
 import com.raptor.gtfs.models.ServicePeriod
@@ -31,7 +30,6 @@ class ConvertCommand : CliktCommand(name = "convert", help = "Convert GTFS to bi
     private val profile by option("--profile", help = "Path to a YAML period profile")
     private val flat by option("--flat", help = "Group app-ready per-period files under raptor/").flag(default = false)
     private val noIndex by option("--no-index", help = "Skip index.bin").flag(default = false)
-    private val pelo by option("--pelo", help = "Pelo app preset").flag(default = false)
 
     override fun run() {
         var tempDir: Path? = null
@@ -69,10 +67,7 @@ class ConvertCommand : CliktCommand(name = "convert", help = "Convert GTFS to bi
             }
 
             var periodAnalyzer: ((GTFSReader) -> List<ServicePeriod>)? = null
-            if (pelo) {
-                periodAnalyzer = PeloPeriodAnalyzer::build
-                if (profile != null) println("WARNING: --pelo overrides --profile")
-            } else if (profile != null) {
+            if (profile != null) {
                 val loadedProfile = ProfileAnalyzer.load(profile!!)
                 periodAnalyzer = { reader -> ProfileAnalyzer.build(loadedProfile, reader) }
             }
@@ -88,12 +83,11 @@ class ConvertCommand : CliktCommand(name = "convert", help = "Convert GTFS to bi
                 speedWalk = speedWalk,
                 transferCutoff = transferCutoff,
                 jobs = jobs,
-                splitByPeriods = splitByPeriods || profile != null || pelo,
+                splitByPeriods = splitByPeriods || profile != null,
                 genTraces = traces,
                 dryRun = dryRun,
                 flatOutput = flat,
-                writeIndex = !noIndex && !pelo,
-                pelo = pelo
+                writeIndex = !noIndex
             )
 
             val manifest = PipelineConverter.convert(actualInput, output, config, periodAnalyzer)
