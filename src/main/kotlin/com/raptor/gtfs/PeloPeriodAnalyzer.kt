@@ -39,8 +39,36 @@ object PeloPeriodAnalyzer {
                 } else if (SCHOOL_WEEKDAY.containsMatchIn(sid)) {
                     schoolOn.add(sid)
                 } else {
-                    schoolOn.add(sid)
-                    schoolOff.add(sid)
+                    var activeInAugust = false
+                    var activeInSept = false
+                    if (cal.startDate.length == 8 && cal.endDate.length == 8) {
+                        val year = cal.startDate.substring(0, 4)
+                        val aug15 = "${year}0815"
+                        val sep15 = "${year}0915"
+                        if (cal.startDate <= aug15 && cal.endDate >= aug15) activeInAugust = true
+                        if (cal.startDate <= sep15 && cal.endDate >= sep15) activeInSept = true
+                    }
+                    
+                    if (activeInAugust && !activeInSept) {
+                        schoolOff.add(sid)
+                    } else if (activeInSept && !activeInAugust) {
+                        schoolOn.add(sid)
+                    } else if (!activeInAugust && !activeInSept && cal.startDate.length == 8 && cal.endDate.length == 8) {
+                        val sYear = cal.startDate.substring(0, 4).toIntOrNull() ?: 0
+                        val eYear = cal.endDate.substring(0, 4).toIntOrNull() ?: 0
+                        val sMonth = cal.startDate.substring(4, 6).toIntOrNull() ?: 0
+                        val eMonth = cal.endDate.substring(4, 6).toIntOrNull() ?: 0
+                        val monthDiff = (eYear - sYear) * 12 + (eMonth - sMonth)
+                        if (monthDiff <= 1) {
+                            schoolOff.add(sid)
+                        } else {
+                            schoolOn.add(sid)
+                            schoolOff.add(sid)
+                        }
+                    } else {
+                        schoolOn.add(sid)
+                        schoolOff.add(sid)
+                    }
                 }
             }
             if (cal.saturday) saturdays.add(sid)
