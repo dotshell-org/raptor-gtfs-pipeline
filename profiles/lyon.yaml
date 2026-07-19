@@ -19,6 +19,9 @@ periods:
         notActiveInMonths: [8]
       - days: [mon-fri]
         activeInMonths: [8, 9]
+        notActiveInMonths: [7]
+      - days: [mon-fri]
+        activeInMonths: [7, 8, 9]
       - days: [mon-fri]
         notActiveInMonths: [8, 9]
         minDurationMonths: 2
@@ -31,7 +34,7 @@ periods:
         activeInMonths: [8]
         notActiveInMonths: [9]
       - days: [mon-fri]
-        activeInMonths: [8, 9]
+        activeInMonths: [7, 8, 9]
       - days: [mon-fri]
         notActiveInMonths: [8, 9]
         maxDurationMonths: 1
