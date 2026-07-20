@@ -26,6 +26,8 @@ class GTFSReader(private val gtfsPath: String) {
     val calendar = mutableListOf<Calendar>()
     val calendarDates = mutableListOf<CalendarDate>()
     val shapesPoints = mutableMapOf<String, MutableList<Pair<Double, Double>>>()
+    /** Single row of the optional `feed_info.txt`; null when the feed omits the file. */
+    var feedInfo: FeedInfo? = null
 
     var stopTimesData = mutableListOf<InternalStopTime>()
     var tripsData = mutableListOf<InternalTrip>()
@@ -50,6 +52,7 @@ class GTFSReader(private val gtfsPath: String) {
         readAgencies()
         readStops()
         readRoutes()
+        readFeedInfo()
         readCalendar()
         readCalendarDates()
         readTrips()
@@ -135,6 +138,22 @@ class GTFSReader(private val gtfsPath: String) {
             ))
             i++
         }    }
+
+    /**
+     * Reads the optional `feed_info.txt`. The spec allows exactly one row; if a feed
+     * ships several we keep the first and ignore the rest.
+     */
+    fun readFeedInfo() {
+        readCsv("feed_info.txt", required = false) { row ->
+            if (feedInfo != null) return@readCsv
+            feedInfo = FeedInfo(
+                publisherName = row["feed_publisher_name"]?.trim() ?: "",
+                startDate = row["feed_start_date"]?.trim() ?: "",
+                endDate = row["feed_end_date"]?.trim() ?: "",
+                version = row["feed_version"]?.trim() ?: ""
+            )
+        }
+    }
 
     fun readCalendar() {
         readCsv("calendar.txt", required = false) { row ->

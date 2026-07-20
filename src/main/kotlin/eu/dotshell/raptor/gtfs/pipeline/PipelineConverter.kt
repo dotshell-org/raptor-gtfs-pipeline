@@ -1,7 +1,9 @@
 package eu.dotshell.raptor.gtfs.pipeline
 
 import eu.dotshell.raptor.gtfs.pipeline.gtfs.CalendarAnalyzer
+import eu.dotshell.raptor.gtfs.pipeline.gtfs.DatasetValidity
 import eu.dotshell.raptor.gtfs.pipeline.gtfs.GTFSReader
+import eu.dotshell.raptor.gtfs.pipeline.gtfs.ValidityAnalyzer
 import eu.dotshell.raptor.gtfs.pipeline.gtfs.models.ConvertConfig
 import eu.dotshell.raptor.gtfs.pipeline.gtfs.models.Manifest
 import eu.dotshell.raptor.gtfs.pipeline.gtfs.models.RouteData
@@ -36,6 +38,11 @@ object PipelineConverter {
         reader.readAll(skipStopTimes = config.dryRun)
 
         val periods = resolvePeriods(reader, config, periodAnalyzer)
+
+        // How long this dataset may be trusted. Computed from the feed itself so the
+        // apps can surface an expiry instead of silently serving stale timetables.
+        val validity = ValidityAnalyzer.analyze(reader.feedInfo, reader.calendar, reader.calendarDates)
+        println("Dataset validity: ${validity.startDate ?: "?"} -> ${validity.endDate ?: "?"} (source: ${validity.source})")
 
         if (config.dryRun) {
             return printDryRunPlan(reader, periods, inputPath, startTime)
@@ -99,7 +106,7 @@ object PipelineConverter {
                 periodManifests.add(Pair(period, manifest))
             }
 
-            writeRootIndex(baseOutput, config, periodManifests, linesWritten, inputPath, startTime)
+            writeRootIndex(baseOutput, config, periodManifests, linesWritten, inputPath, startTime, validity)
 
             println("\n============================================================")
             println("Generated ${manifests.size} period folders:")
@@ -114,7 +121,7 @@ object PipelineConverter {
                 reader, routes, File(outputPath), config, startTime, inputPath, periodName = null
             )
             val singlePeriod = ServicePeriod("all", mutableListOf(), "Complete dataset")
-            writeRootIndex(File(outputPath), config, listOf(Pair(singlePeriod, singleManifest)), linesWritten, inputPath, startTime)
+            writeRootIndex(File(outputPath), config, listOf(Pair(singlePeriod, singleManifest)), linesWritten, inputPath, startTime, validity)
             return singleManifest
         }
     }
@@ -284,7 +291,8 @@ object PipelineConverter {
         periodManifests: List<Pair<ServicePeriod, Manifest>>,
         linesWritten: Boolean,
         inputPath: String,
-        startTime: ZonedDateTime
+        startTime: ZonedDateTime,
+        validity: DatasetValidity
     ) {
         val layout = when {
             config.flatOutput -> "flat"
@@ -319,6 +327,7 @@ object PipelineConverter {
             val input: Map<String, String>,
             val layout: String,
             val lines: Map<String, String>?,
+            val validity: DatasetValidity,
             val periods: List<PeriodIndex>
         )
 
@@ -358,6 +367,7 @@ object PipelineConverter {
             input = mapOf("gtfs_path" to inputPath),
             layout = layout,
             lines = linesMap,
+            validity = validity,
             periods = periodsIndex
         )
 
