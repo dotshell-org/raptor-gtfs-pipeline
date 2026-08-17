@@ -35,6 +35,7 @@ object RouteBuilder {
                 routeIdInternal = routeIdInternal,
                 routeIdGtfs = routeId,
                 routeName = routeNameLookup[routeId] ?: "",
+                directionId = directionId,
                 stopIds = canonicalStopIds,
                 trips = mutableListOf()
             ))

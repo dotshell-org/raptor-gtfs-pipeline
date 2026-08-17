@@ -1,3 +1,22 @@
+# Lyon TCL.
+#
+# The two weekday periods are defined by a representative date each, not by the shape of a
+# service's calendar span. School term and school holidays are both ordinary weekdays: what
+# separates them is which services are withdrawn on which dates, and that lives in
+# calendar_dates.txt — 30 072 of its 31 109 rows on this feed are withdrawals. A rule reading only
+# the calendar's start and end dates cannot see a withdrawal, so it cannot tell the two apart.
+#
+# The previous rules keyed school services off service ids ending in "-M-" (term) and "-V-"/"-W-"
+# (holidays). This export uses ids like "41-5088" and none of them match, so those rules were dead
+# and every service fell through to month-span guesses that both periods shared verbatim. The
+# result was school_off_weekdays containing 96 % of school_on_weekdays plus 13 180 trips more —
+# holidays with a fuller service than term.
+#
+# Choosing the dates: count the trips running on each Thursday of the feed. On this export, term
+# Thursdays carry about 22 600 and Toussaint ones about 19 100; the drop is the school services.
+# Thursday avoids Monday and Friday edge cases and the Wednesday school half-day. These dates are
+# tied to this export and must be revisited when the feed is replaced — the build prints how many
+# services each period drew, which is where a stale date shows up first.
 network: lyon-tcl
 options:
   flat_output: true
@@ -12,30 +31,9 @@ periods:
   school_on_weekdays:
     description: Weekdays during school term
     rules:
-      - days: [mon-fri]
-        serviceIdMatches: "-M-$"
-      - days: [mon-fri]
-        activeInMonths: [9]
-        notActiveInMonths: [8]
-      - days: [mon-fri]
-        activeInMonths: [8, 9]
-        notActiveInMonths: [7]
-      - days: [mon-fri]
-        activeInMonths: [7, 8, 9]
-      - days: [mon-fri]
-        notActiveInMonths: [8, 9]
-        minDurationMonths: 2
+      - onDate: 2026-11-05   # Thursday, term (~22 600 trips)
   school_off_weekdays:
     description: Weekdays during school holidays
     rules:
-      - days: [mon-fri]
-        serviceIdMatches: "-[VW]-$"
-      - days: [mon-fri]
-        activeInMonths: [8]
-        notActiveInMonths: [9]
-      - days: [mon-fri]
-        activeInMonths: [7, 8, 9]
-      - days: [mon-fri]
-        notActiveInMonths: [8, 9]
-        maxDurationMonths: 1
+      - onDate: 2026-10-29   # Thursday, Toussaint holidays (~19 100 trips)
 unmatched: warn

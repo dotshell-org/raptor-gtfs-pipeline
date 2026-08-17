@@ -9,7 +9,19 @@ data class PeriodRule(
     val activeInMonths: List<Int>? = null,
     val notActiveInMonths: List<Int>? = null,
     val maxDurationMonths: Int? = null,
-    val minDurationMonths: Int? = null
+    val minDurationMonths: Int? = null,
+    /**
+     * A date the service must actually run on, as YYYYMMDD or YYYY-MM-DD.
+     *
+     * The exact rule, and the only one that can tell a school term from a school holiday: both are
+     * ordinary weekdays, distinguished in a feed by which services are withdrawn on which dates.
+     * The other rules read the calendar's *span*, so they cannot see a withdrawal at all — a
+     * service running September to July looks identical either side of the Toussaint break.
+     *
+     * Evaluating it honours calendar_dates.txt, where those withdrawals live: on the TCL feed,
+     * 30 072 of its 31 109 rows are removals.
+     */
+    val onDate: String? = null
 )
 
 @Serializable

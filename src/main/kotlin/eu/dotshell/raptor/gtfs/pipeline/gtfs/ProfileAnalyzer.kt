@@ -40,14 +40,78 @@ object ProfileAnalyzer {
         return result
     }
 
-    private fun matchesRule(rule: PeriodRule, serviceId: String, activeDays: Set<Int>, cal: Calendar?): Boolean {
+    /** Normalises YYYY-MM-DD or YYYYMMDD to the YYYYMMDD the feed uses. Null if it is neither. */
+    private fun normalizeDate(value: String): String? {
+        val digits = value.filter { it.isDigit() }
+        return if (digits.length == 8) digits else null
+    }
+
+    private fun dayOfWeekIndex(yyyymmdd: String): Int? {
+        val date = try {
+            java.time.LocalDate.parse(
+                yyyymmdd,
+                java.time.format.DateTimeFormatter.BASIC_ISO_DATE
+            )
+        } catch (_: java.time.format.DateTimeParseException) {
+            return null
+        }
+        // Monday is 0 here, as everywhere else in this file; java.time counts Monday as 1.
+        return date.dayOfWeek.value - 1
+    }
+
+    /**
+     * Does this service run on this date?
+     *
+     * calendar.txt gives the weekly pattern and the span; calendar_dates.txt overrides it for
+     * single dates, and an override wins — that is the whole point of the file. A service present
+     * only in calendar_dates.txt has no pattern at all and runs exactly on its added dates.
+     */
+    private fun runsOn(
+        serviceId: String,
+        yyyymmdd: String,
+        cal: Calendar?,
+        exceptions: Map<Pair<String, String>, Int>
+    ): Boolean {
+        when (exceptions[Pair(serviceId, yyyymmdd)]) {
+            1 -> return true
+            2 -> return false
+        }
+        if (cal == null) return false
+
+        val dayIndex = dayOfWeekIndex(yyyymmdd) ?: return false
+        val runsToday = when (dayIndex) {
+            0 -> cal.monday
+            1 -> cal.tuesday
+            2 -> cal.wednesday
+            3 -> cal.thursday
+            4 -> cal.friday
+            5 -> cal.saturday
+            else -> cal.sunday
+        }
+        if (!runsToday) return false
+
+        return cal.startDate <= yyyymmdd && yyyymmdd <= cal.endDate
+    }
+
+    private fun matchesRule(
+        rule: PeriodRule,
+        serviceId: String,
+        activeDays: Set<Int>,
+        cal: Calendar?,
+        exceptions: Map<Pair<String, String>, Int>
+    ): Boolean {
         if (rule.serviceIdMatches != null && !Regex(rule.serviceIdMatches).containsMatchIn(serviceId)) {
             return false
         }
         if (rule.days.isNotEmpty() && activeDays.intersect(parseDays(rule.days)).isEmpty()) {
             return false
         }
-        
+        if (rule.onDate != null) {
+            val date = normalizeDate(rule.onDate)
+                ?: throw IllegalArgumentException("onDate must be YYYYMMDD or YYYY-MM-DD, got '${rule.onDate}'")
+            if (!runsOn(serviceId, date, cal, exceptions)) return false
+        }
+
         if (cal != null && cal.startDate.length == 8 && cal.endDate.length == 8) {
             val sYear = cal.startDate.substring(0, 4).toIntOrNull() ?: 0
             val eYear = cal.endDate.substring(0, 4).toIntOrNull() ?: 0
@@ -107,8 +171,17 @@ object ProfileAnalyzer {
             services.putIfAbsent(cd.serviceId, emptySet())
         }
 
+        // calendar_dates.txt, indexed for the date rules. One entry per service and date.
+        val exceptions = reader.calendarDates.associate {
+            Pair(it.serviceId, it.date) to it.exceptionType
+        }
+
         val assigned = profile.periods.keys.associateWith { mutableListOf<String>() }
         val matched = mutableSetOf<String>()
+        /** How many services each rule accounted for, so a rule that never fires can be reported. */
+        val ruleHits = mutableMapOf<Pair<String, Int>, Int>()
+        /** Services landing in more than one period, which is legal but rarely intended. */
+        val periodsOfService = mutableMapOf<String, MutableList<String>>()
 
         for ((serviceId, activeDays) in services) {
             val cal = calendars[serviceId]
@@ -119,19 +192,46 @@ object ProfileAnalyzer {
                     // if no rules, it matches everything (fallback behavior)
                     anyMatch = true
                 } else {
-                    for (rule in effectiveRules) {
-                        if (matchesRule(rule, serviceId, activeDays, cal)) {
+                    for ((index, rule) in effectiveRules.withIndex()) {
+                        if (matchesRule(rule, serviceId, activeDays, cal, exceptions)) {
+                            ruleHits[Pair(name, index)] = (ruleHits[Pair(name, index)] ?: 0) + 1
                             anyMatch = true
                             break
                         }
                     }
                 }
-                
+
                 if (anyMatch) {
                     assigned[name]!!.add(serviceId)
                     matched.add(serviceId)
+                    periodsOfService.getOrPut(serviceId) { mutableListOf() }.add(name)
                 }
             }
+        }
+
+        /*
+         * Report what the profile did, because both of these failed silently before.
+         *
+         * A rule matching nothing is a rule written for another feed: the Lyon profile keyed school
+         * services off service ids ending in "-M-", a convention this TCL export no longer uses, so
+         * its two most precise rules matched zero of 4 278 services and every classification fell
+         * through to date-span guesses that cannot tell a school term from a holiday.
+         *
+         * A service in several periods is legal — a line running all year belongs to every weekday
+         * period — but when it happens to most of the feed the periods are not describing different
+         * service, and the output is one period repeated under several names.
+         */
+        for ((name, def) in profile.periods) {
+            def.getEffectiveRules().forEachIndexed { index, rule ->
+                if ((ruleHits[Pair(name, index)] ?: 0) == 0) {
+                    println("  ! period '$name' rule #${index + 1} matched no service: $rule")
+                }
+            }
+        }
+        val shared = periodsOfService.values.count { it.size > 1 }
+        if (shared > 0) {
+            val share = shared * 100 / services.size.coerceAtLeast(1)
+            println("  ! $shared of ${services.size} services ($share%) fall in more than one period")
         }
 
         val periods = mutableListOf<ServicePeriod>()
