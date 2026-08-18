@@ -172,10 +172,27 @@ object PipelineConverter {
         )
     }
 
-    private fun filterRoutesByTrips(routes: List<RouteData>, periodTripIds: Set<String>): List<RouteData> {
+    /**
+     * The trips of one route that belong to a period, each departure kept once.
+     *
+     * A period spans several days, and an operator commonly gives each day its own service id
+     * carrying an identical timetable. Unioned, the same departure arrives here five times over —
+     * 22 % of the trips of a school-term week — and a timetable listing 05:00 three times reads as
+     * a line running three times as often. Two trips of one route with the same times at the same
+     * stops are the same departure, whatever their trip ids: the first is kept, the copies dropped.
+     *
+     * This belongs here rather than in TripBuilder, which builds routes across the whole feed
+     * before any period exists. Deduplicating there keeps one trip per distinct timetable for the
+     * entire season, and the survivor's id belongs to whichever service happened to come first —
+     * so the period filter below then drops it, taking a real departure with it.
+     */
+    internal fun filterRoutesByTrips(routes: List<RouteData>, periodTripIds: Set<String>): List<RouteData> {
         val filteredRoutes = mutableListOf<RouteData>()
         for (route in routes) {
-            val filteredTrips = route.trips.filter { it.tripIdGtfs in periodTripIds }.toMutableList()
+            val seen = HashSet<List<Float>>()
+            val filteredTrips = route.trips
+                .filter { it.tripIdGtfs in periodTripIds && seen.add(it.arrivalTimes) }
+                .toMutableList()
             if (filteredTrips.isNotEmpty()) {
                 filteredRoutes.add(route.copy(trips = filteredTrips))
             }

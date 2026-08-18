@@ -74,7 +74,7 @@ periods:
     rules:
       - days: [mon-fri]
         dateRanges:
-          - { from: 2026-11-02, to: 2026-11-06 }
+          - { from: 2026-11-02, to: 2026-11-06 }   # one term week: every weekday, deduplicated
   school_off_weekdays:
     description: Weekdays during school holidays
     rules:

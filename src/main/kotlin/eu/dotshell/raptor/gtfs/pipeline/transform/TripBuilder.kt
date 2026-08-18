@@ -71,6 +71,7 @@ object TripBuilder {
             }
 
             tripDataList.sortBy { it.first }
+
             route.trips.addAll(tripDataList.map { it.second })
             totalTrips += route.trips.size
         }
