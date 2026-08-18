@@ -93,6 +93,39 @@ object ProfileAnalyzer {
         return cal.startDate <= yyyymmdd && yyyymmdd <= cal.endDate
     }
 
+    /**
+     * Every date a rule names: its single date, its list, and every day of each window.
+     *
+     * Windows are expanded rather than tested as intervals because a service's presence is a
+     * property of a date — the calendar's pattern and the exceptions of calendar_dates.txt both
+     * answer for one day at a time, and a withdrawal is invisible to anything coarser.
+     */
+    private fun datesOf(rule: PeriodRule): List<String> {
+        val dates = mutableListOf<String>()
+
+        rule.onDate?.let { dates.add(requireDate(it, "onDate")) }
+        rule.onDates.forEach { dates.add(requireDate(it, "onDates")) }
+
+        for (range in rule.dateRanges) {
+            val from = requireDate(range.from, "dateRanges.from")
+            val to = requireDate(range.to, "dateRanges.to")
+            require(from <= to) { "dateRanges window runs backwards: $from to $to" }
+
+            var day = java.time.LocalDate.parse(from, java.time.format.DateTimeFormatter.BASIC_ISO_DATE)
+            val last = java.time.LocalDate.parse(to, java.time.format.DateTimeFormatter.BASIC_ISO_DATE)
+            while (!day.isAfter(last)) {
+                dates.add(day.format(java.time.format.DateTimeFormatter.BASIC_ISO_DATE))
+                day = day.plusDays(1)
+            }
+        }
+
+        return dates
+    }
+
+    private fun requireDate(value: String, field: String): String =
+        normalizeDate(value)
+            ?: throw IllegalArgumentException("$field must be YYYYMMDD or YYYY-MM-DD, got '$value'")
+
     private fun matchesRule(
         rule: PeriodRule,
         serviceId: String,
@@ -106,10 +139,23 @@ object ProfileAnalyzer {
         if (rule.days.isNotEmpty() && activeDays.intersect(parseDays(rule.days)).isEmpty()) {
             return false
         }
-        if (rule.onDate != null) {
-            val date = normalizeDate(rule.onDate)
-                ?: throw IllegalArgumentException("onDate must be YYYYMMDD or YYYY-MM-DD, got '${rule.onDate}'")
-            if (!runsOn(serviceId, date, cal, exceptions)) return false
+        val candidateDates = datesOf(rule)
+        if (candidateDates.isNotEmpty()) {
+            /*
+             * One match is enough, and that is deliberate.
+             *
+             * A period is the union of its windows: a service running only over the February break
+             * belongs to the holiday dataset even though it is absent at Toussaint. Requiring it to
+             * run on every listed date would keep only the services common to all breaks, which is
+             * a dataset no real day matches either — and it would drop precisely the school-holiday
+             * reinforcements the period exists to describe.
+             */
+            val wanted = if (rule.days.isEmpty()) null else parseDays(rule.days)
+            val runsOnAny = candidateDates.any { date ->
+                (wanted == null || dayOfWeekIndex(date) in wanted) &&
+                    runsOn(serviceId, date, cal, exceptions)
+            }
+            if (!runsOnAny) return false
         }
 
         if (cal != null && cal.startDate.length == 8 && cal.endDate.length == 8) {

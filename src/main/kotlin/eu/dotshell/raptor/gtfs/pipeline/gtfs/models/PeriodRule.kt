@@ -11,17 +11,39 @@ data class PeriodRule(
     val maxDurationMonths: Int? = null,
     val minDurationMonths: Int? = null,
     /**
-     * A date the service must actually run on, as YYYYMMDD or YYYY-MM-DD.
+     * A single date the service must run on, as YYYYMMDD or YYYY-MM-DD.
      *
-     * The exact rule, and the only one that can tell a school term from a school holiday: both are
-     * ordinary weekdays, distinguished in a feed by which services are withdrawn on which dates.
-     * The other rules read the calendar's *span*, so they cannot see a withdrawal at all — a
-     * service running September to July looks identical either side of the Toussaint break.
-     *
-     * Evaluating it honours calendar_dates.txt, where those withdrawals live: on the TCL feed,
-     * 30 072 of its 31 109 rows are removals.
+     * Rarely what you want on its own: one date is one week of one holiday. A service running only
+     * during the February break is absent from every other break's date, so a period defined by a
+     * lone date silently drops it. Prefer `dateRanges`, which covers each break in full; this is
+     * here for the case where a period really is one day.
      */
-    val onDate: String? = null
+    val onDate: String? = null,
+    /** Further single dates, considered alongside `onDate` and `dateRanges`. */
+    val onDates: List<String> = emptyList(),
+    /**
+     * Windows of the calendar the service must run in — every school holiday of the year, or every
+     * stretch of term.
+     *
+     * The service matches if it runs on **at least one** date inside any window, restricted to the
+     * rule's `days` when it has some. This is the only rule that can separate a school term from a
+     * school holiday: both are ordinary weekdays, and what distinguishes them is which services are
+     * withdrawn on which dates — 30 072 of the 31 109 rows of the TCL feed's calendar_dates.txt.
+     * The span-based rules read a calendar's start and end and cannot see a withdrawal at all.
+     *
+     * Matching on "at least one date" makes a period the union of its windows: a service running
+     * only over Christmas belongs to the holiday period even though it is absent at Toussaint. That
+     * is what makes the output usable on any date of the year, and it does mean the period holds
+     * slightly more service than any single day of it runs.
+     */
+    val dateRanges: List<DateRange> = emptyList()
+)
+
+/** Inclusive window of dates, each as YYYYMMDD or YYYY-MM-DD. */
+@Serializable
+data class DateRange(
+    val from: String,
+    val to: String
 )
 
 @Serializable

@@ -1,22 +1,52 @@
 # Lyon TCL.
 #
-# The two weekday periods are defined by a representative date each, not by the shape of a
-# service's calendar span. School term and school holidays are both ordinary weekdays: what
-# separates them is which services are withdrawn on which dates, and that lives in
-# calendar_dates.txt — 30 072 of its 31 109 rows on this feed are withdrawals. A rule reading only
-# the calendar's start and end dates cannot see a withdrawal, so it cannot tell the two apart.
+# Periods are defined by windows of the calendar, not by the shape of a service's date span. School
+# term and school holidays are both ordinary weekdays: what separates them is which services are
+# withdrawn on which dates, and that lives in calendar_dates.txt — 30 072 of its 31 109 rows on this
+# export are withdrawals. A rule reading only a calendar's start and end cannot see a withdrawal, so
+# it cannot tell the two apart. The previous rules also keyed school services off ids ending in
+# "-M-" / "-V-", a convention this export dropped: they matched none of its 4 278 services, and
+# everything fell through to month guesses both periods shared verbatim.
 #
-# The previous rules keyed school services off service ids ending in "-M-" (term) and "-V-"/"-W-"
-# (holidays). This export uses ids like "41-5088" and none of them match, so those rules were dead
-# and every service fell through to month-span guesses that both periods shared verbatim. The
-# result was school_off_weekdays containing 96 % of school_on_weekdays plus 13 180 trips more —
-# holidays with a fuller service than term.
+# A service joins a period if it runs on at least one day of any of its windows, and the windows are
+# one representative *week* per stretch. A single day cannot represent a week — a Monday-only
+# service is invisible to a Thursday — and a whole stretch cannot represent a day, because it unions
+# services that never run together:
 #
-# Choosing the dates: count the trips running on each Thursday of the feed. On this export, term
-# Thursdays carry about 22 600 and Toussaint ones about 19 100; the drop is the school services.
-# Thursday avoids Monday and Friday edge cases and the Wednesday school half-day. These dates are
-# tied to this export and must be revisited when the feed is replaced — the build prints how many
-# services each period drew, which is where a stale date shows up first.
+#   holidays, one Thursday               19 145 trips   misses whatever runs only on other weekdays
+#   holidays, one week                   23 374 trips   <- used here
+#   holidays, every day of the break     29 428 trips
+#
+#   term, one Thursday                   22 679 trips
+#   term, one week                       30 249 trips   <- used here
+#   term, every day of term              83 695 trips   more than any real day runs
+#
+# Summer is deliberately not one of the holiday windows. It is a third service regime, not a bigger
+# version of the small breaks — a weekday in late August carries 16 164 to 19 287 trips against
+# 19 145 to 19 472 at Toussaint, with different services rather than fewer. Unioning it into
+# school_off_weekdays gives 43 509 trips, which is more than the term period holds: holidays busier
+# than school, which is the fault this profile exists to correct. If the app needs to route in
+# August, that wants its own period rather than a heavier holiday one.
+#
+# February, spring and any other school-year break belong here as further windows, one week each,
+# the day a longer export carries them.
+#
+# Windows read off this export by counting trips per weekday:
+#
+#   17–28 Aug 2026   16 164–19 287   summer break, before the 31 Aug rentrée
+#   31 Aug–16 Oct    20 904–22 694   term
+#   19–30 Oct        19 145–19 472   Toussaint break, two weeks
+#    2 Nov–18 Dec    22 334–22 724   term
+#   from 21 Dec       6 184 and less  the export stops carrying a full timetable
+#
+# So this export covers two breaks: the tail of summer and Toussaint. Christmas onwards is the feed
+# running out, not a holiday timetable, and is left out on purpose. Add the February, spring and
+# summer breaks here when an export reaches them — the build reports any rule matching no service,
+# which is where a window outside the feed shows up.
+#
+# If phantom trips matter more than coverage, the alternative is one period per break
+# (school_off_toussaint, school_off_fevrier, …): the pipeline names periods freely, it is the
+# consumer that expects four.
 network: lyon-tcl
 options:
   flat_output: true
@@ -31,9 +61,13 @@ periods:
   school_on_weekdays:
     description: Weekdays during school term
     rules:
-      - onDate: 2026-11-05   # Thursday, term (~22 600 trips)
+      - days: [mon-fri]
+        dateRanges:
+          - { from: 2026-11-02, to: 2026-11-06 }
   school_off_weekdays:
     description: Weekdays during school holidays
     rules:
-      - onDate: 2026-10-29   # Thursday, Toussaint holidays (~19 100 trips)
+      - days: [mon-fri]
+        dateRanges:
+          - { from: 2026-10-26, to: 2026-10-30 }   # Toussaint; add February, spring, … alongside
 unmatched: warn
