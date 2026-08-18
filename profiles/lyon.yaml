@@ -52,12 +52,23 @@ options:
   flat_output: true
   write_index: false
 periods:
+  # Saturday and Sunday need a window as much as the weekdays do. On a day-pattern rule alone they
+  # matched any service that ever ran on that day, including the 46 line numbers TCL retired at the
+  # end of August 2026 — 2, 3, 5 to 27, C3, C7, C11, C19, S1, S3, N20, N80 and the rest — whose
+  # calendars simply stop on 30 August while their replacements (102, 103, 105…, C203, C204) start
+  # on the 31st. The weekend files carried both networks at once.
   saturday:
     description: Saturday service
-    days: [sat]
+    rules:
+      - days: [sat]
+        dateRanges:
+          - { from: 2026-11-07, to: 2026-11-07 }
   sunday:
     description: Sunday service
-    days: [sun]
+    rules:
+      - days: [sun]
+        dateRanges:
+          - { from: 2026-11-08, to: 2026-11-08 }
   school_on_weekdays:
     description: Weekdays during school term
     rules:
