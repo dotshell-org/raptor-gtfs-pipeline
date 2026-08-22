@@ -5,7 +5,7 @@ plugins {
     kotlin("plugin.serialization")
     `maven-publish`
     signing
-    id("com.gradleup.nmcp") version "1.6.1"
+    id("com.gradleup.nmcp")
 }
 
 description = "Converts GTFS datasets into the compact binaries the RAPTOR routing algorithm reads."

@@ -179,12 +179,22 @@ or in the environment as `OSSRH_USERNAME`, `OSSRH_PASSWORD`, `SIGNING_KEY_ID`,
 is what CI would use.
 
 ```bash
-./gradlew :core:publishToMavenLocal                  # verify the artifacts first
-./gradlew :core:publishAllPublicationsToCentralPortal
+./gradlew :core:publishToMavenLocal              # verify the artifacts first
+./gradlew nmcpPublishAggregationToCentralPortal  # upload and release
 ```
 
 The deployment releases automatically once Central's validation passes. Pass
-`-PpublishingType=USER_MANAGED` to have it wait in the portal for a manual look instead.
+`-PpublishingType=USER_MANAGED` to have it wait in the portal instead — worth doing for a
+version whose POM or coordinates changed. The upload then prints a deployment id, and the
+waiting deployment is released either from the Central UI or with:
+
+```bash
+./gradlew nmcpPublishDeployment -PnmcpDeploymentId=<id>
+```
+
+That task lives on the root project, registered by nmcp's aggregation plugin. It does not
+exist on `:core`, which is why the publishing plugins are declared at the root and applied
+where they are used.
 
 Without signing keys configured the build still works — it simply produces no signatures,
 and Central rejects the upload. That is deliberate: a missing key must not fail everyone's
