@@ -16,8 +16,6 @@ data class ConvertConfig(
     val debugJson: Boolean = false,
     @SerialName("gen_transfers")
     val genTransfers: Boolean = false,
-    @SerialName("allow_partial_trips")
-    val allowPartialTrips: Boolean = false,
     @SerialName("speed_walk")
     val speedWalk: Double = 1.33,
     @SerialName("transfer_cutoff")

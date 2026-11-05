@@ -5,12 +5,24 @@ import eu.dotshell.raptor.gtfs.pipeline.gtfs.GTFSReader
 import eu.dotshell.raptor.gtfs.pipeline.gtfs.models.*
 
 object RouteBuilder {
+    /**
+     * One route per stop sequence a line runs in a direction, the most-run sequence first.
+     *
+     * A RAPTOR route is one stop sequence with a full timetable, so a trip skipping a stop of it or
+     * calling somewhere else cannot be written into it. There used to be a single route per
+     * direction, and every trip that did not cover its whole sequence was dropped: half of line 1
+     * of the Mistral export on any day, and on Sundays all of lines U, 18, 72 and 81, whose Sunday
+     * service follows another route than the weekday one that set the sequence.
+     *
+     * The binary has no direction field, so consumers have to tell directions apart from the stops
+     * themselves. Keeping the most-run sequence first gives them a stable main pattern to start from.
+     */
     fun buildRoutes(reader: GTFSReader): List<RouteData> {
-        PipelineLog.info("Building routes with canonical stop sequences")
+        PipelineLog.info("Building routes, one per stop sequence")
 
         val tripSequences = reader.stopTimesData
             .groupBy { it.tripId }
-            .mapValues { (_, times) -> times.map { it.stopId } }
+            .mapValues { (_, times) -> times.sortedBy { it.stopSequence }.map { it.stopId } }
 
         val routeNameLookup = reader.routes.associate {
             it.routeId to it.routeShortName.ifBlank { it.routeLongName }
@@ -29,34 +41,25 @@ object RouteBuilder {
             val sequencesForRoute = tripIds.mapNotNull { tripSequences[it] }
             if (sequencesForRoute.isEmpty()) continue
 
-            val canonicalSeq = findCanonicalSequence(sequencesForRoute, "${routeId}_dir$directionId")
-            val canonicalStopIds = canonicalSeq.mapNotNull { reader.stopIdMap[it] }
-
-            routes.add(RouteData(
-                routeIdInternal = routeIdInternal,
-                routeIdGtfs = routeId,
-                routeName = routeNameLookup[routeId] ?: "",
-                directionId = directionId,
-                stopIds = canonicalStopIds,
-                trips = mutableListOf()
-            ))
+            for (sequence in sequencesByUse(sequencesForRoute)) {
+                routes.add(RouteData(
+                    routeIdInternal = routeIdInternal,
+                    routeIdGtfs = routeId,
+                    routeName = routeNameLookup[routeId] ?: "",
+                    directionId = directionId,
+                    stopIds = sequence.mapNotNull { reader.stopIdMap[it] },
+                    trips = mutableListOf()
+                ))
+            }
         }
 
         PipelineLog.info("Built ${routes.size} routes")
         return routes
     }
 
-    private fun findCanonicalSequence(sequences: List<List<String>>, routeId: String): List<String> {
-        if (sequences.isEmpty()) throw IllegalArgumentException("Route $routeId has no sequences")
-
-        val counter = sequences.groupingBy { it }.eachCount()
-        val maxCount = counter.values.maxOrNull() ?: 0
-        val tiedSequences = counter.filterValues { it == maxCount }.keys.toList()
-
-        return if (tiedSequences.size > 1) {
-            tiedSequences.minByOrNull { it.joinToString(",") } ?: tiedSequences.first()
-        } else {
-            tiedSequences.first()
-        }
-    }
+    /** Every distinct sequence, most trips first; ties broken on the stops, so builds are repeatable. */
+    private fun sequencesByUse(sequences: List<List<String>>): List<List<String>> =
+        sequences.groupingBy { it }.eachCount().entries
+            .sortedWith(compareByDescending<Map.Entry<List<String>, Int>> { it.value }.thenBy { it.key.joinToString(",") })
+            .map { it.key }
 }
