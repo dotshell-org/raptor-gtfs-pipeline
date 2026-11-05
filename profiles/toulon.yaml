@@ -1,31 +1,53 @@
-# Réseau Mistral (Toulon) — day-type profile matching the app's expected
-# period names.
+# Réseau Mistral (Toulon).
 #
-# WARNING: this feed's calendar.txt has every day column set to 0 — the real
-# service is carried entirely by calendar_dates.txt. Day-based rules (`days:`)
-# would therefore match nothing; we classify purely by the day-type token
-# encoded in the service_id (-Semaine-, -Samedi-, -Dimanche-).
-# Do NOT run with --pelo: it overrides --profile and reads the (empty)
-# calendar day bits.
+# calendar.txt has every day column at 0 on all but the cable car's services: the real service is
+# carried by calendar_dates.txt, so `days:` rules would match next to nothing. Periods are therefore
+# one window of the calendar each, as in lyon.yaml: a service joins a period if it runs on at least
+# one day of the window. The tokens in the service ids (-Semaine-, -Samedi-, …) would union every
+# regime of the feed and cannot tell a school week from a holiday one.
 #
-# `JUA` is the only calendar anchor that carries trips (the Mont Faron cable
-# car, running 7 days a week) — included in all four periods.
-# `-Fête-` (public holiday) services are deliberately excluded: the app maps
-# public holidays to the sunday dataset (FrenchPublicHolidayStrategy), so
-# holiday-only trips would only inflate ordinary Sundays.
-# Summer feed: no school split, so school_on == school_off (identical data).
+# Windows read off the export of 4 November 2026 by counting trips and lines per day:
+#
+#   4–6 Nov           1 870–3 640 trips   start of the export, partial: left out
+#   9–20 Nov, weekdays  3 580–3 734, 83–96 lines   school term, 46 of those lines are school runs
+#   Saturdays         2 604, 46 lines
+#   Sundays             937–939, 29 lines
+#   11 Nov              924, 29 lines     public holiday; the app maps those to the sunday dataset
+#   21–24 Dec         3 082–3 173, 48 lines   Christmas break; the export stops on the 24th
+#
+# Windows are dates, so they have to be moved when an export stops covering them. The build reports
+# any rule matching no service, which is where that shows up.
+#
+# The Mont Faron cable car is the exception: it is published one month at a time, as a service named
+# after the month (NOV, and empty JUA, SEP, OCT). It has its own rule, with no window, to stay in all
+# four periods whichever month the export is cut on.
 network: toulon-mistral
+options:
+  flat_output: true
+  write_index: false
 periods:
   saturday:
-    service_id_matches: "-Samedi-|^JUA$"
     description: Saturday service
+    rules:
+      - dateRanges:
+          - { from: 2026-11-21, to: 2026-11-21 }
+      - serviceIdMatches: "^[A-Z]{3}$"
   sunday:
-    service_id_matches: "-Dimanche-|^JUA$"
-    description: Sunday and holidays service
+    description: Sunday and public holiday service
+    rules:
+      - dateRanges:
+          - { from: 2026-11-22, to: 2026-11-22 }
+      - serviceIdMatches: "^[A-Z]{3}$"
   school_on_weekdays:
-    service_id_matches: "-Semaine-|^JUA$"
-    description: Weekday service (summer feed, no school split)
+    description: Weekdays during school term
+    rules:
+      - dateRanges:
+          - { from: 2026-11-16, to: 2026-11-20 }   # one term week: every weekday, deduplicated
+      - serviceIdMatches: "^[A-Z]{3}$"
   school_off_weekdays:
-    service_id_matches: "-Semaine-|^JUA$"
-    description: Weekday service (summer feed, no school split)
-unmatched: other   # -Fête- and empty monthly anchors land here
+    description: Weekdays during school holidays
+    rules:
+      - dateRanges:
+          - { from: 2026-12-21, to: 2026-12-24 }   # Christmas; the export has no other break
+      - serviceIdMatches: "^[A-Z]{3}$"
+unmatched: warn
