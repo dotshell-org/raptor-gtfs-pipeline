@@ -6,10 +6,11 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * Every trip of a line reaches the output, whichever stops it calls at.
+ * With `route_per_stop_sequence`, every trip of a line reaches the output, whichever stops it calls at.
  *
- * Each direction used to have one route, and a trip not covering its whole stop sequence was dropped:
- * half of line 1 of the Mistral export, and on Sundays all of lines U, 18, 72 and 81.
+ * By default each direction has one route, and a trip not covering its whole stop sequence is dropped:
+ * half of line 1 of the Mistral export, and on Sundays all of lines U, 18, 72 and 81. That default
+ * stays for the cities whose installed apps read a line's routes as its directions.
  */
 class TripPatternTest {
 
@@ -51,12 +52,21 @@ class TripPatternTest {
         return dir
     }
 
-    private fun built(): Pair<GTFSReader, List<eu.dotshell.raptor.gtfs.pipeline.gtfs.models.RouteData>> {
+    private fun built(routePerStopSequence: Boolean = true): Pair<GTFSReader, List<eu.dotshell.raptor.gtfs.pipeline.gtfs.models.RouteData>> {
         val reader = GTFSReader(feed().absolutePath)
         reader.readAll()
-        val routes = RouteBuilder.buildRoutes(reader)
-        TripBuilder.buildAndSortTrips(reader, routes)
+        val routes = RouteBuilder.buildRoutes(reader, routePerStopSequence)
+        TripBuilder.buildAndSortTrips(reader, routes, routePerStopSequence)
         return reader to routes
+    }
+
+    /** What apps built before 0.5.0 expect: one route for the direction, partial trips dropped. */
+    @Test
+    fun byDefaultADirectionKeepsOneRouteAndOnlyItsFullTrips() {
+        val (reader, routes) = built(routePerStopSequence = false)
+        assertEquals(1, routes.size, "one route per direction")
+        assertEquals(listOf("a", "b", "c").map { reader.stopIdMap.getValue(it) }, routes.single().stopIds)
+        assertEquals(listOf("early", "noon", "late"), routes.single().trips.map { it.tripIdGtfs })
     }
 
     @Test

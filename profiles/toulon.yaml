@@ -21,10 +21,14 @@
 # The Mont Faron cable car is the exception: it is published one month at a time, as a service named
 # after the month (NOV, and empty JUA, SEP, OCT). It has its own rule, with no window, to stay in all
 # four periods whichever month the export is cut on.
+#
+# One route per stop sequence: with one per direction, half of line 1 and all of U, 18, 72 and 81 on
+# Sundays were dropped. Télo tells directions apart from the stops, and no older Télo is installed.
 network: toulon-mistral
 options:
   flat_output: true
   write_index: false
+  route_per_stop_sequence: true
 periods:
   saturday:
     description: Saturday service

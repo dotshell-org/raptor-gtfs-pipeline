@@ -31,5 +31,8 @@ data class ConvertConfig(
     @SerialName("flat_output")
     val flatOutput: Boolean = false,
     @SerialName("write_index")
-    val writeIndex: Boolean = true
+    val writeIndex: Boolean = true,
+    /** One route per stop sequence instead of per direction; see RouteBuilder.buildRoutes. */
+    @SerialName("route_per_stop_sequence")
+    val routePerStopSequence: Boolean = false
 )
