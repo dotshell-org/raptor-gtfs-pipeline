@@ -75,6 +75,69 @@ def coverage_chart(daily: pd.DataFrame, holidays: list[tuple[dt.date, dt.date]],
     return path
 
 
+def local_trips_chart(rows: pd.DataFrame, path: Path) -> Path:
+    """Same trips, bigger networks: one panel per city, one bar per tier that holds the city.
+
+    `rows` has columns query_set, kind (metropole | region | france), label and latency_p50_ms,
+    latency_p95_ms, for the forward direction.
+    """
+    sets = list(dict.fromkeys(rows["query_set"]))
+    fig, axes = plt.subplots(1, len(sets), figsize=(4.6 * len(sets), 4.2), facecolor=SURFACE, squeeze=False)
+    for ax, name in zip(axes[0], sets):
+        _style(ax)
+        ax.grid(axis="x", visible=False)
+        part = rows[rows["query_set"] == name].reset_index(drop=True)
+        positions = range(len(part))
+        ax.bar(positions, part["latency_p50_ms"], width=0.55, color=[SERIES[k] for k in part["kind"]], zorder=3)
+        for i, row in part.iterrows():
+            ax.annotate(f"{row.latency_p50_ms:.1f} ms", (i, row.latency_p50_ms), xytext=(0, 15), textcoords="offset points",
+                        ha="center", fontsize=9, color=INK)
+            ax.annotate(f"p95 {row.latency_p95_ms:.1f}", (i, row.latency_p50_ms), xytext=(0, 4), textcoords="offset points",
+                        ha="center", fontsize=8, color=MUTED)
+        ax.set_xticks(list(positions), part["label"], fontsize=9, color=INK_SECONDARY)
+        ax.set_ylim(0, part["latency_p50_ms"].max() * 1.3)
+        ax.set_title(f"{name.replace('-local', '').title()} trips, median time", loc="left", fontsize=10.5, color=INK, pad=8)
+    axes[0][0].set_ylabel("Forward query, ms")
+    fig.savefig(path, dpi=150, bbox_inches="tight", facecolor=SURFACE)
+    plt.close(fig)
+    return path
+
+
+def scaling_chart(points: pd.DataFrame, x: str, y: str, xlabel: str, ylabel: str, title: str, path: Path,
+                  labelled: dict | None = None, y_unit: str = "") -> Path:
+    """One measure against network size, one dot per tier, log–log, coloured by tier kind.
+
+    `points` has columns tier, kind and the two named in x and y. `labelled` maps a tier to
+    its label, or to (label, dx, dy) to move it off a neighbour's.
+    """
+    labelled = labelled or {}
+    fig, ax = plt.subplots(figsize=(8.5, 5.2), facecolor=SURFACE)
+    _style(ax)
+    for kind in ("metropole", "region", "france"):
+        part = points[points["kind"] == kind]
+        ax.scatter(part[x], part[y], s=46 if kind != "france" else 80, color=SERIES[kind], edgecolor=SURFACE,
+                   linewidth=2, label=KIND_LABEL[kind], zorder=3)
+    for row in points.itertuples():
+        if row.tier in labelled:
+            label = labelled[row.tier]
+            text, dx, dy = (label, 7, -3) if isinstance(label, str) else label
+            ax.annotate(text, (getattr(row, x), getattr(row, y)), xytext=(dx, dy), ha="left" if dx >= 0 else "right",
+                        textcoords="offset points", fontsize=8.5, color=INK_SECONDARY)
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    if y_unit:
+        ax.yaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda v, _: f"{v:g} {y_unit}"))
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.set_title(title, loc="left", fontsize=10.5, color=INK, pad=8)
+    legend = ax.legend(frameon=False, loc="upper left", fontsize=9)
+    for text in legend.get_texts():
+        text.set_color(INK_SECONDARY)
+    fig.savefig(path, dpi=150, bbox_inches="tight", facecolor=SURFACE)
+    plt.close(fig)
+    return path
+
+
 def pipeline_chart(points: pd.DataFrame, path: Path, labelled: dict[str, str] | None = None) -> Path:
     """Pipeline peak memory against the stop_times it read, one dot per tier, log–log.
 

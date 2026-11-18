@@ -38,8 +38,8 @@ There are two data layers:
 | 2 | Download latest versions, credentials | `gtfs_bench/download.py` | done |
 | 3 | Merge N feeds into one per tier | `gtfs_bench/` + `tests/` | done |
 | 4 | Notebook running the whole chain | `notebooks/gtfs_france.ipynb` | done |
-| 5 | Pipeline conversion, measured | `gtfs_bench/convert.py` | in review |
-| 6 | Engine harness (`:benchmark-engine`) | `engine/` | |
+| 5 | Pipeline conversion, measured | `gtfs_bench/convert.py` | done |
+| 6 | Engine harness (`:benchmark-engine`) | `engine/` + `gtfs_bench/engine.py` | in review |
 | 7 | Report | `RESULTS.md` | |
 | 8 | Long-distance layer, connected France | catalogue + `gtfs_bench/connectivity.py` | |
 
@@ -66,17 +66,18 @@ python -m venv .venv
 7. merge of the 22 métropoles, the 13 regions and France;
 8. tier statistics;
 9. checks;
-10. conversion of every tier by the pipeline.
+10. conversion of every tier by the pipeline;
+11. raptor-kmp on every tier, and the heap sweep.
 
 **Building the pipeline needs JDK 21.** Kotlin 2.1.0 cannot parse Java 25's version string,
 so `./gradlew` fails with an internal compiler error when the Gradle daemon runs on JDK 25.
 Point `JAVA_HOME` at a JDK 21, for instance the one Gradle provisions for the toolchain:
 
 ```bash
-JAVA_HOME=~/.gradle/jdks/eclipse_adoptium-21-amd64-windows.2 ./gradlew :cli:installDist
+JAVA_HOME=~/.gradle/jdks/eclipse_adoptium-21-amd64-windows.2 ./gradlew :cli:installDist :benchmark-engine:installDist
 ```
 
-The notebook runs the pipeline with the same `JAVA_HOME`.
+The notebook runs the pipeline and the engine harness with the same `JAVA_HOME`.
 
 Open it with the `.venv` interpreter as kernel, or run it headless from `notebooks/`:
 
@@ -93,11 +94,53 @@ The notebook is committed without outputs. What it measures lands in `results/`:
 | `merge_stats.csv`, `tiers.png` | the size of each tier, over the week and on the reference day |
 | `pattern_overlaps.csv` | feeds that run the same stop sequences |
 | `pipeline.csv` | per tier: conversion time, peak memory, `.bin` sizes, trips kept |
+| `engine/*.json`, `engine.csv`, `engine_scenarios.csv` | raptor-kmp per tier: load, heap, latency of every query set, named trips |
+| `engine_heap.csv` | whether Lyon, AURA, Île-de-France and France load and route under -Xmx 256 MB to 4 GB |
+| `engine_local_trips.png`, `engine_heap.png`, `engine_latency.png` | the engine figures |
 
 **The reference day** is the Tuesday, outside school holidays, that the most feeds run
 on, then the one with the most trips. It is computed from the downloaded calendars over
 the next six weeks. The pipeline converts that one day, and the merge keeps its whole
 week.
+
+## The engine harness
+
+`engine/` is the Gradle module `:benchmark-engine`. It depends on
+`eu.dotshell:raptor-kmp-jvm` from Maven Central (2.2.0, the latest JVM release;
+`-PraptorKmpVersion=` picks another). It never touches the engine's sources: it times what
+an app ships.
+
+`gtfs_bench/engine.py` starts one JVM per tier, so every load is cold, and reads back the
+harness's JSON report. Each report holds:
+
+- **load**: reading the files, then deserialization and network construction, forced as
+  raptor-kmp's own `LoadBenchmark` does; first in a fresh JVM, then the median of five
+  warm loads;
+- **heap**: what the loaded network holds once garbage is collected, and the peak during
+  the run;
+- **query sets**:
+  - `random`: 1,000 seeded pairs over all of the tier's stops, as raptor-kmp's
+    `RandomQueryGenerator` (departures 6:00–21:59), forward and arrive-by (arrival one
+    hour later, default 120 min window);
+  - `lyon-local`, `paris-local` (`engine/areas.csv`): 300 seeded trips drawn inside each
+    city, every endpoint resolved to the stops within 400 m. The same trips are replayed on
+    the métropole, its region and France: what a rider in the city pays for a bigger
+    network;
+- **named trips** (`engine/scenarios.csv`): from Bellecour → Part-Dieu to Brest →
+  Strasbourg, each place being the stops within a radius of its coordinates, so the trip
+  reads the same on every tier.
+
+Queries run with the engine's defaults (`maxRounds = 5`, so at most four changes), as the
+apps run them. The heap sweep reruns Lyon, Auvergne-Rhône-Alpes, Île-de-France and France
+in heap mode (load plus 200 queries) under -Xmx 256m, 384m, 512m, 1g, 2g and 4g.
+
+```bash
+python -m gtfs_bench.engine                      # all tiers, then the sweep
+python -m gtfs_bench.engine --tiers france --no-sweep
+```
+
+These are desktop JVM numbers (JDK 21, Core Ultra 5 135H). A phone runs ART on a slower
+core: the heap figures carry over, the times do not.
 
 ## Credentials
 
