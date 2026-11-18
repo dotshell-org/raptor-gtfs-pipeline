@@ -1,4 +1,4 @@
-"""python -m gtfs_bench.explorer [--tier france] [--java …] [--xmx 1g]"""
+"""python -m gtfs_bench.explorer [--tier france] [--java …] [--xmx 2g]"""
 
 import argparse
 import sys
@@ -13,7 +13,9 @@ def main(argv: list[str] | None = None) -> int:
                                      description="Pick two stops, get the itinerary from raptor-kmp.")
     parser.add_argument("--tier", default="france", help="france, region:84, metropole:lyon… (a converted tier)")
     parser.add_argument("--java", help="java executable (default: $JAVA_HOME, then PATH)")
-    parser.add_argument("--xmx", default="1g", help="engine heap (France needs at least 384m)")
+    # France loads in 384m; each extra RAPTOR round then costs ~9.4 MB of search state, so the
+    # explorer's top limit (99 changes = 100 rounds) needs ~1.2 GB on France.
+    parser.add_argument("--xmx", default="2g", help="engine heap (France loads in 384m; 99 changes need ~1.2g)")
     args = parser.parse_args(argv)
 
     data = tier_dir(args.tier)

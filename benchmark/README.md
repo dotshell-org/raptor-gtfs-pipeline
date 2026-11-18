@@ -154,7 +154,15 @@ runs in a JVM with France loaded once, and you pick two stops anywhere in it:
   counts too ("lyon gambetta"). A place is every stop sharing a name. Enter or a click
   picks it.
 - **Time:** a departure time, or "arriver avant" for arrive-by. The day is the
-  benchmark's reference day.
+  benchmark's reference day (Tuesday 24 November 2026): the tiers are converted for that
+  day only. Times past 24:00 reach that day's late-night trips (25:30 = 01:30 the next
+  morning). The previous evening's trips running past midnight are not in the network, so
+  very early mornings look emptier than they are.
+- **Changes:** "correspondances max", 0 to 99 (− / + or type it, Enter). This is RAPTOR's
+  round limit minus one; the engine's default is 4. High values make for absurd itineraries.
+  Each extra round costs about 9.4 MB of search state on France, which is why the explorer
+  starts the engine with `-Xmx2g`. Below that, a very high limit answers "pas assez de
+  mémoire" and the engine keeps running.
 - **Result:** the itinerary, leg by leg, with lines, stops and walks, and the alternatives
   raptor-kmp returns (fewer changes against earlier arrival). The time shown is the
   raptor-kmp call alone, measured inside the JVM.

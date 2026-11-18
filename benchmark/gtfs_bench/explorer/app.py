@@ -24,9 +24,10 @@ from rich.text import Text
 from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import Button, Footer, Header, Input, Label, OptionList, Static, Switch
 from textual.widgets.option_list import Option
+from textual.worker import get_current_worker
 
 from . import mapview
 from .backend import EngineServer, Journey, RouteResult
@@ -35,6 +36,30 @@ from .places import Place, PlaceIndex
 DAYS = ("lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche")
 MONTHS = ("janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre",
           "novembre", "décembre")
+
+# Changes allowed per journey. RAPTOR counts rounds (rides): rounds = changes + 1. The engine's
+# default is 5 rounds; the explorer lets you go much higher, for the fun of absurd itineraries.
+DEFAULT_CHANGES = 4
+MAX_CHANGES = 99
+
+
+def day_text(day: dt.date) -> str:
+    return f"{DAYS[day.weekday()]} {day.day} {MONTHS[day.month - 1]} {day.year}"
+
+
+def parse_changes(text: str) -> int | None:
+    try:
+        value = int(text.strip())
+    except ValueError:
+        return None
+    return value if 0 <= value <= MAX_CHANGES else None
+
+
+def limit_text(changes: int) -> str:
+    rounds = f"{changes + 1} tour{'s' if changes else ''} RAPTOR"
+    if changes == 0:
+        return f"trajets directs seulement ({rounds})"
+    return f"au plus {changes} correspondance{'s' if changes > 1 else ''} ({rounds})"
 
 
 def hhmm(seconds: int) -> str:
@@ -103,15 +128,18 @@ class Explorer(App):
     #right { padding: 0 1; }
     .label { margin-top: 1; color: $text-muted; }
     #from_list, #to_list { height: 7; border: none; background: $boost; }
-    #when { height: 3; margin-top: 1; }
+    #when, #limits { height: 3; }
     #time { width: 12; }
-    #arrive_by_label { padding: 1 1; }
+    #arrive_by_label, #limits_label { padding: 1 1; }
+    #fewer, #more { min-width: 5; width: 5; }
+    #max_changes { width: 8; }
     #buttons { height: 3; margin-top: 1; }
     #buttons Button { min-width: 10; margin-right: 1; }
     #history { margin-top: 1; color: $text-muted; height: 1fr; }
-    #summary { height: 4; padding: 1 1 0 1; background: $boost; }
+    #summary { height: 5; padding: 1 1 0 1; background: $boost; }
     #alternatives { height: auto; max-height: 6; border: none; }
-    #legs { height: auto; max-height: 50%; margin-top: 1; }
+    #legs_box { height: auto; max-height: 50%; margin-top: 1; }
+    #legs { height: auto; }
     #map { height: 1fr; margin-top: 1; }
     """
     BINDINGS = [
@@ -123,7 +151,7 @@ class Explorer(App):
         Binding("down", "to_list", show=False),
     ]
 
-    def __init__(self, data_dir: Path, tier_name: str, java: str | None = None, xmx: str = "1g",
+    def __init__(self, data_dir: Path, tier_name: str, java: str | None = None, xmx: str = "2g",
                  cache_dir: Path | None = None, reference_day: dt.date | None = None, server=None,
                  commune_lookup=None, outline: list | None = None):
         super().__init__()
@@ -141,6 +169,7 @@ class Explorer(App):
         self.network: tuple | None = None
         self.history: deque[str] = deque(maxlen=12)
         self.rng = random.Random()
+        self.changes_used = DEFAULT_CHANGES  # the limit of the result on screen
 
     # ── layout ───────────────────────────────────────────────────────────────────────
 
@@ -153,10 +182,17 @@ class Explorer(App):
             yield Label("Arrivée", classes="label")
             yield Input(placeholder="Part-Dieu, La Défense…", id="to", disabled=True)
             yield OptionList(id="to_list")
+            when = f"Quand · horaires du {day_text(self.reference_day)}" if self.reference_day else "Quand"
+            yield Label(when, id="when_label", classes="label")
             with Horizontal(id="when"):
                 yield Input(value="08:00", id="time", placeholder="HH:MM")
                 yield Switch(id="arrive_by")
                 yield Label("arriver avant", id="arrive_by_label")
+            with Horizontal(id="limits"):
+                yield Button("−", id="fewer")
+                yield Input(value=str(DEFAULT_CHANGES), id="max_changes", type="integer", max_length=2)
+                yield Button("+", id="more")
+                yield Label("correspondances max", id="limits_label")
             with Horizontal(id="buttons"):
                 yield Button("Calculer", id="go", variant="primary", disabled=True)
                 yield Button("Surprends-moi", id="random", disabled=True)
@@ -165,7 +201,8 @@ class Explorer(App):
         with Vertical(id="right"):
             yield Static("Chargement du moteur…", id="summary")
             yield OptionList(id="alternatives")
-            yield Static("", id="legs")
+            with VerticalScroll(id="legs_box"):  # an absurd journey has more legs than the screen
+                yield Static("", id="legs")
             yield Static("", id="map")
         yield Footer()
 
@@ -202,10 +239,7 @@ class Explorer(App):
 
     def ready(self, seconds: float) -> None:
         info = self.server.info
-        day = ""
-        if self.reference_day:
-            d = self.reference_day
-            day = f" · horaires du {DAYS[d.weekday()]} {d.day} {MONTHS[d.month - 1]} {d.year}"
+        day = f" · horaires du {day_text(self.reference_day)}" if self.reference_day else ""
         self.sub_title = (f"{self.tier_name} · {thousands(info['stops'])} arrêts · {thousands(info['routes'])} lignes · "
                           f"{thousands(info['trips'])} courses · chargé en {ms(info['loadMs'])} · {info['heapMb']:.0f} Mo{day}")
         for widget in ("#from", "#to", "#go", "#random"):
@@ -273,35 +307,57 @@ class Explorer(App):
             self.status("Heure illisible : écris par exemple 08:15.")
             return
         arrive_by = self.query_one("#arrive_by", Switch).value
-        self.status(f"Calcul {origin.name} → {destination.name}…")
-        self.compute(origin, destination, when, arrive_by)
+        changes = parse_changes(self.query_one("#max_changes", Input).value)
+        if changes is None:
+            self.status(f"Correspondances max : un nombre de 0 à {MAX_CHANGES}.")
+            return
+        self.status(f"Calcul {origin.name} → {destination.name}, {limit_text(changes)}…")
+        self.compute(origin, destination, when, arrive_by, changes)
 
-    @on(Input.Submitted, "#time")
+    @on(Input.Submitted, "#time, #max_changes")
     def time_entered(self) -> None:
         self.action_route()
 
-    @work(thread=True, exclusive=True, group="route")
-    def compute(self, origin: Place, destination: Place, when: int, arrive_by: bool) -> None:
-        try:
-            result = self.server.route(origin.ids, destination.ids, when, arrive_by)
-        except Exception as error:  # the engine said no: show it, keep the app alive
-            self.call_from_thread(self.status, f"Erreur du moteur : {error}")
-            return
-        self.call_from_thread(self.show, origin, destination, when, arrive_by, result)
+    @on(Button.Pressed, "#fewer, #more")
+    def step_changes(self, event: Button.Pressed) -> None:
+        box = self.query_one("#max_changes", Input)
+        current = parse_changes(box.value)
+        step = 1 if event.button.id == "more" else -1
+        box.value = str(DEFAULT_CHANGES if current is None else min(MAX_CHANGES, max(0, current + step)))
+        if self.chosen["from"] and self.chosen["to"]:
+            self.action_route()
 
-    def show(self, origin: Place, destination: Place, when: int, arrive_by: bool, result: RouteResult) -> None:
-        self.result = result
+    @work(thread=True, exclusive=True, group="route")
+    def compute(self, origin: Place, destination: Place, when: int, arrive_by: bool, changes: int) -> None:
+        try:
+            result = self.server.route(origin.ids, destination.ids, when, arrive_by, max_rounds=changes + 1)
+        except Exception as error:  # the engine said no: show it, keep the app alive
+            if "OutOfMemoryError" in str(error):
+                message = (f"Pas assez de mémoire pour {limit_text(changes)} : relance l'explorateur avec "
+                           f"un tas plus gros (--xmx 2g, 4g…).")
+            else:
+                message = f"Erreur du moteur : {error}"
+            self.call_from_thread(self.status, message)
+            return
+        if get_current_worker().is_cancelled:  # a newer search was asked for meanwhile
+            return
+        self.call_from_thread(self.show, origin, destination, when, arrive_by, changes, result)
+
+    def show(self, origin: Place, destination: Place, when: int, arrive_by: bool, changes: int,
+             result: RouteResult) -> None:
+        self.result, self.changes_used = result, changes
         journeys = sorted(result.journeys, key=lambda j: (j.changes, j.arrival))
         self.journey = result.best(arrive_by)
         alternatives = self.query_one("#alternatives", OptionList)
         alternatives.clear_options()
         verb = "arrivée avant" if arrive_by else "départ à"
-        self.history.appendleft(f"{ms(result.ms):>9}  {origin.name[:16]} → {destination.name[:16]}")
+        limit = f" ≤{changes}" if changes != DEFAULT_CHANGES else ""
+        self.history.appendleft(f"{ms(result.ms):>9}  {origin.name[:15]} → {destination.name[:15]}{limit}")
         self.query_one("#history", Static).update(Text("Derniers calculs\n", style="bold") + Text("\n".join(self.history)))
         if self.journey is None:
             summary = Text(f"Aucun itinéraire, {verb} {hhmm(when)}\n", style="bold #e34948")
-            summary.append(f"calculé en {ms(result.ms)} · au plus 4 correspondances (5 tours) · sans TGV ni Intercités pour l'instant",
-                           style="dim")
+            summary.append(f"calculé en {ms(result.ms)} · {limit_text(changes)}\n", style="dim")
+            summary.append("sans TGV ni Intercités pour l'instant · essaie plus de correspondances", style="dim")
             self.query_one("#summary", Static).update(summary)
             self.query_one("#legs", Static).update("")
         else:
@@ -327,9 +383,12 @@ class Explorer(App):
         summary = Text(journey_summary(journey, arrive_by) + "\n", style="bold")
         count = len(result.journeys)
         summary.append(f"calculé en {ms(result.ms)} par raptor-kmp · {count} itinéraire{'s' if count > 1 else ''} "
-                       f"{'optimaux' if count > 1 else 'optimal'} (moins de correspondances ↔ arrivée plus tôt)", style="#1baf7a")
+                       f"{'optimaux' if count > 1 else 'optimal'} (moins de changements ↔ plus tôt)\n", style="#1baf7a")
+        day = f" · horaires du {day_text(self.reference_day)}" if self.reference_day else ""
+        summary.append(limit_text(self.changes_used) + day, style="dim")
         self.query_one("#summary", Static).update(summary)
         self.query_one("#legs", Static).update(legs_table(journey))
+        self.query_one("#legs_box", VerticalScroll).scroll_home(animate=False)
 
     # ── map and little actions ───────────────────────────────────────────────────────
 

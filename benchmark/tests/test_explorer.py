@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 
 from gtfs_bench.explorer import mapview
-from gtfs_bench.explorer.app import Explorer, duration, hhmm, ms, parse_time
-from gtfs_bench.explorer.backend import Journey, Leg, RouteResult, parse_route
+from gtfs_bench.explorer.app import Explorer, duration, hhmm, limit_text, ms, parse_changes, parse_time
+from gtfs_bench.explorer.backend import EngineError, Journey, Leg, RouteResult, parse_route
 from gtfs_bench.explorer.places import PlaceIndex
 
 STOPS = [
@@ -41,8 +41,10 @@ class FakeServer:
         return STOPS
 
     def route(self, origins, destinations, time, arrive_by=False, max_rounds=5):
-        self.calls.append((sorted(origins), sorted(destinations), time, arrive_by))
-        return RouteResult(1.25, [journey()])
+        self.calls.append((sorted(origins), sorted(destinations), time, arrive_by, max_rounds))
+        if max_rounds > 50:
+            raise EngineError("OutOfMemoryError: no room for that many rounds in a 1024 MB heap")
+        return RouteResult(1.25, [journey()], max_rounds)
 
     def close(self):
         pass
@@ -80,6 +82,11 @@ def test_formatting():
     assert duration(35 * 60) == "35 min" and duration(75 * 60) == "1 h 15"
     assert ms(4.234) == "4,2 ms" and ms(250.4) == "250 ms"
     assert parse_time("8h30") == 30600 and parse_time("08:30") == 30600 and parse_time("bof") is None
+    assert parse_changes("0") == 0 and parse_changes(" 12 ") == 12
+    assert parse_changes("-1") is None and parse_changes("100") is None and parse_changes("") is None
+    assert limit_text(0) == "trajets directs seulement (1 tour RAPTOR)"
+    assert limit_text(1) == "au plus 1 correspondance (2 tours RAPTOR)"
+    assert limit_text(20) == "au plus 20 correspondances (21 tours RAPTOR)"
 
 
 def test_parse_route_and_best_journey():
@@ -144,6 +151,41 @@ def test_app_routes_between_two_picked_stops():
     asyncio.run(scenario())
 
 
+def test_app_change_limit_reaches_the_engine():
+    async def scenario():
+        server = FakeServer()
+        app = make_app(server)
+        async with app.run_test(size=(150, 45)) as pilot:
+            await wait_ready(app, pilot)
+            assert "mardi 24 novembre 2026" in str(app.query_one("#when_label").render())
+            await pilot.click("#from")
+            await pilot.press(*"bellec", "enter")
+            await pilot.press(*"part dieu", "enter")
+            await pilot.pause(0.3)
+            assert server.calls[-1][4] == 5                     # default: 4 changes = 5 rounds
+            await pilot.click("#more")
+            await pilot.pause(0.3)
+            assert server.calls[-1][4] == 6
+            assert "au plus 5 correspondances (6 tours RAPTOR)" in str(app.query_one("#summary").render())
+            assert "≤5" in str(app.query_one("#history").render())
+            box = app.query_one("#max_changes")
+            box.value = "0"
+            await pilot.click("#max_changes")
+            await pilot.press("enter")
+            await pilot.pause(0.3)
+            assert server.calls[-1][4] == 1
+            await pilot.click("#fewer")                          # already at 0: stays there
+            await pilot.pause(0.3)
+            assert server.calls[-1][4] == 1 and box.value == "0"
+            box.value = "80"                                     # the fake engine runs out of memory
+            await pilot.click("#max_changes")
+            await pilot.press("enter")
+            await pilot.pause(0.3)
+            assert server.calls[-1][4] == 81
+            assert "Pas assez de mémoire" in str(app.query_one("#summary").render())
+    asyncio.run(scenario())
+
+
 ROOT = Path(__file__).resolve().parent.parent
 LYON_DATA = ROOT / "data" / "raptor" / "metropole-lyon" / "bench"
 
@@ -161,5 +203,13 @@ def test_real_engine_on_lyon():
         best = result.best()
         assert best is not None and best.arrival - best.departure < 3600
         assert result.ms > 0 and all(leg.path for leg in best.legs)
+        # The round limit holds, also after a bigger one (the engine caches its search state).
+        far = index.search("vaulx en velin la soie")[0]
+        for rounds in (1, 30, 2, 12, 1):
+            result = server.route(origin.ids, far.ids, 8 * 3600, max_rounds=rounds)
+            assert result.max_rounds == rounds
+            assert all(len(j.rides) <= rounds for j in result.journeys)
+        arrive_by = server.route(origin.ids, far.ids, 9 * 3600, arrive_by=True, max_rounds=20)
+        assert arrive_by.max_rounds == 20 and all(j.arrival <= 9 * 3600 for j in arrive_by.journeys)
     finally:
         server.close()

@@ -60,6 +60,7 @@ class Journey:
 class RouteResult:
     ms: float
     journeys: list[Journey]
+    max_rounds: int | None = None  # the limit the engine ran with: most rides, i.e. changes + 1
 
     def best(self, arrive_by: bool = False) -> Journey | None:
         if not self.journeys:
@@ -76,13 +77,13 @@ def parse_route(answer: dict) -> RouteResult:
             Leg(l["from"], l["to"], l["dep"], l["arr"], l.get("route"), l.get("direction"), l["walk"], l.get("stops", 0),
                 [(p[0], p[1]) for p in l.get("path", [])])
             for l in legs]))
-    return RouteResult(answer["ms"], journeys)
+    return RouteResult(answer["ms"], journeys, answer.get("maxRounds"))
 
 
 class EngineServer:
     """One JVM with one network loaded. Thread-safe: requests are serialized."""
 
-    def __init__(self, data_dir: Path, java: str | None = None, xmx: str = "1g"):
+    def __init__(self, data_dir: Path, java: str | None = None, xmx: str = "2g"):
         if not (ENGINE_INSTALL / "lib").exists():
             raise EngineError(f"{ENGINE_INSTALL} is missing: run ./gradlew :benchmark-engine:installDist")
         if not (data_dir / "routes.bin").exists():
@@ -116,6 +117,7 @@ class EngineServer:
 
     def route(self, origins: list[int], destinations: list[int], time: int, arrive_by: bool = False,
               max_rounds: int = 5) -> RouteResult:
+        """max_rounds is RAPTOR's round limit: the most rides a journey may take (changes + 1)."""
         return parse_route(self.request({"op": "route", "from": origins, "to": destinations, "time": time,
                                          "arriveBy": arrive_by, "maxRounds": max_rounds}))
 

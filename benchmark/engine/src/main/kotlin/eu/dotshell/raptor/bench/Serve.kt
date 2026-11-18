@@ -27,9 +27,12 @@ import java.lang.management.ManagementFactory
  *     {"op":"stops"}                                    -> every stop: [id, name, lat, lon]
  *     {"op":"route","from":[ids],"to":[ids],"time":s,   -> the engine's journeys, each leg
  *      "arriveBy":false,"maxRounds":5}                     with names, times and its path
+ *                                                          (maxRounds = most rides = changes + 1)
  *     {"op":"quit"}
  *
- * "ms" in a route answer times the raptor-kmp call alone, not the pipe around it. This is
+ * "ms" in a route answer times the raptor-kmp call alone, not the pipe around it. The first
+ * search of each kind (forward, arrive-by) after the round limit changes runs once untimed
+ * before the timed run, so "ms" leaves out allocating a search state of the new size. This is
  * what gtfs_bench.explorer, the terminal explorer, talks to.
  */
 fun main(args: Array<String>) {
@@ -58,6 +61,7 @@ fun main(args: Array<String>) {
         "heapMb" to JsonPrimitive(heapMb),
     )))
 
+    val states = SearchStates(library)
     val input = System.`in`.bufferedReader(Charsets.UTF_8)
     while (true) {
         val line = input.readLine() ?: break
@@ -66,14 +70,65 @@ fun main(args: Array<String>) {
             val request = Json.parseToJsonElement(line).jsonObject
             when (request["op"]?.jsonPrimitive?.content) {
                 "stops" -> stopsAnswer(stops)
-                "route" -> routeAnswer(library, stops, request)
+                "route" -> routeAnswer(library, stops, states, request)
                 "quit" -> break
                 else -> """{"type":"error","message":"unknown op"}"""
             }
+        } catch (error: OutOfMemoryError) {
+            // A search state is (rounds + 1) × stops × 8 ints: a very high round limit on
+            // France does not fit a small heap. Free it and keep serving.
+            states.drop()
+            System.gc()
+            val heapMb = Runtime.getRuntime().maxMemory() / 1024 / 1024
+            errorAnswer("OutOfMemoryError: no room for that many rounds in a $heapMb MB heap")
         } catch (error: Exception) {
-            JsonObject(mapOf("type" to JsonPrimitive("error"), "message" to JsonPrimitive(error.toString()))).toString()
+            errorAnswer(error.toString())
         }
         out.println(answer)
+    }
+}
+
+private fun errorAnswer(message: String) =
+    JsonObject(mapOf("type" to JsonPrimitive("error"), "message" to JsonPrimitive(message))).toString()
+
+/**
+ * raptor-kmp 2.2.0 keeps its search state from one call to the next and reuses it whenever it
+ * has at least the rounds asked for, but then runs as many rounds as the state has: after a
+ * 30-round search, a 5-round one would still explore up to 30 rounds (its journeys stay within
+ * 5, its time does not). So when the limit changes, the cached states are dropped and the next
+ * search allocates one of the right size. The cache is private, hence reflection; if a later
+ * engine renames it, nothing is dropped and [dropping] turns false.
+ */
+private class SearchStates(private val library: RaptorLibrary) {
+    private var rounds = -1
+    private val ready = HashSet<Boolean>() // search kinds (arrive-by or not) already run at `rounds`
+    var dropping = true
+        private set
+
+    /** True when this kind of search has not run at this limit yet: run it once untimed first. */
+    fun firstAt(maxRounds: Int, arriveBy: Boolean): Boolean {
+        if (maxRounds != rounds) {
+            drop()
+            rounds = maxRounds
+        }
+        return ready.add(arriveBy)
+    }
+
+    fun drop() {
+        ready.clear()
+        rounds = -1
+        if (!dropping) return
+        try {
+            val cache = RaptorLibrary::class.java.getDeclaredField("algorithmCache")
+                .apply { isAccessible = true }.get(library) as Map<*, *>
+            for (algorithm in cache.values.filterNotNull()) {
+                for (name in listOf("lastState", "lastBackwardState")) {
+                    algorithm.javaClass.getDeclaredField(name).apply { isAccessible = true }.set(algorithm, null)
+                }
+            }
+        } catch (error: ReflectiveOperationException) {
+            dropping = false
+        }
     }
 }
 
@@ -88,20 +143,27 @@ private fun stopsAnswer(stops: List<Stop>): String {
     return text.append("]}").toString()
 }
 
-private fun routeAnswer(library: RaptorLibrary, stops: List<Stop>, request: JsonObject): String {
+private fun routeAnswer(library: RaptorLibrary, stops: List<Stop>, states: SearchStates, request: JsonObject): String {
     val from = request["from"]!!.jsonArray.map { it.jsonPrimitive.int }
     val to = request["to"]!!.jsonArray.map { it.jsonPrimitive.int }
     val time = request["time"]!!.jsonPrimitive.int
     val arriveBy = request["arriveBy"]?.jsonPrimitive?.boolean ?: false
     val maxRounds = request["maxRounds"]?.jsonPrimitive?.int ?: 5
+    require(maxRounds >= 1) { "maxRounds must be at least 1" }
 
-    val started = System.nanoTime()
-    val journeys = if (arriveBy) library.getOptimizedPathsArriveBy(from, to, time, maxRounds = maxRounds)
+    fun search() = if (arriveBy) library.getOptimizedPathsArriveBy(from, to, time, maxRounds = maxRounds)
                    else library.getOptimizedPaths(from, to, time, maxRounds = maxRounds)
+
+    if (states.firstAt(maxRounds, arriveBy)) search()
+    val started = System.nanoTime()
+    val journeys = search()
     val ms = (System.nanoTime() - started) / 1e6
 
     val text = StringBuilder()
-    text.append("""{"type":"route","ms":""").append(ms).append(""","journeys":[""")
+    text.append("""{"type":"route","ms":""").append(ms)
+        .append(""","maxRounds":""").append(maxRounds)
+        .append(""","statesDropped":""").append(states.dropping)
+        .append(""","journeys":[""")
     journeys.filter { it.isNotEmpty() }.forEachIndexed { j, legs ->
         if (j > 0) text.append(',')
         text.append('[')
