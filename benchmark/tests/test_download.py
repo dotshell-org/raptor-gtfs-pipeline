@@ -147,6 +147,20 @@ def test_feeds_sharing_a_url_share_one_download(server, dirs):
     assert (dirs["extracted_dir"] / "sncf-grandes-lignes" / "stops.txt").exists()
 
 
+def test_register_a_zip_placed_by_hand(dirs):
+    from gtfs_bench.download import register_local
+
+    dirs["raw_dir"].mkdir(parents=True)
+    (dirs["raw_dir"] / "tcl.zip").write_bytes(feed_zip("GTFS_TCL/"))
+    result = register_local("tcl", **dirs)
+    assert result.status == "manual" and result.ok, result.error
+    assert (dirs["extracted_dir"] / "tcl" / "stop_times.txt").exists()
+    assert read_manifest(dirs["manifest"])["tcl"].service_end == "2026-12-19"
+
+    (dirs["raw_dir"] / "bad.zip").write_bytes(zip_bytes({"readme.txt": "x"}))
+    assert register_local("bad", **dirs).status == "failed"
+
+
 def test_extraction_never_writes_outside_its_folder(tmp_path):
     archive = tmp_path / "evil.zip"
     files = dict(MINIMAL_FEED)

@@ -4,6 +4,7 @@
     python -m gtfs_bench.download --feeds tcl,idfm   # some feeds, included or not
     python -m gtfs_bench.download --layer all        # the long-distance layer too
     python -m gtfs_bench.download --force            # ignore what is already on disk
+    python -m gtfs_bench.download --register tcl     # a zip placed by hand in data/raw/
 
 Each feed lands in data/raw/<feed_id>.zip and is unpacked into data/extracted/<feed_id>/.
 data/raw/manifest.csv records, per feed, what was fetched, from where, its checksum, the
@@ -49,13 +50,13 @@ ATTEMPTS = 3
 MAX_UNCOMPRESSED = 10 * 1024**3
 REQUIRED_FILES = ("stops.txt", "routes.txt", "trips.txt", "stop_times.txt")
 
-OK_STATUSES = ("downloaded", "not_modified")
+OK_STATUSES = ("downloaded", "not_modified", "manual")
 
 
 @dataclass
 class FeedResult:
     feed_id: str
-    status: str = "failed"          # downloaded | not_modified | failed
+    status: str = "failed"          # downloaded | not_modified | manual | failed
     http_status: int | None = None
     url: str = ""
     final_url: str = ""
@@ -441,6 +442,35 @@ def download_all(rows: list[dict], credentials: CredentialStore | None = None, w
     return [results[r["feed_id"]] for r in rows]
 
 
+def register_local(feed_id: str, raw_dir: Path = RAW_DIR, extracted_dir: Path = EXTRACTED_DIR,
+                   manifest: Path = MANIFEST) -> FeedResult:
+    """Record a zip someone placed in raw_dir by hand (a source the script cannot reach).
+
+    It goes through the same checks as a download, is unpacked afresh, and is marked
+    `manual` so the manifest says it was not fetched by the script. A later download run
+    replaces it only with --force: the conditional GET has no ETag to send for it.
+    """
+    path = raw_dir / f"{feed_id}.zip"
+    result = FeedResult(feed_id=feed_id, url="", final_url=str(path),
+                        downloaded_at=dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"))
+    try:
+        if not path.exists():
+            raise DownloadError(f"{path} does not exist", hint=f"Put the feed's zip at {path}.")
+        unwrap_nested_zip(path)
+        check_gtfs(path)
+        data = path.read_bytes()
+        # Unpacked afresh even if a folder is there: the same rules as for any download.
+        result.files = " ".join(extract_feed(path, extracted_dir / feed_id))
+        result.service_start, result.service_end, result.validity_source = service_window(extracted_dir / feed_id)
+        result.status, result.size, result.sha256 = "manual", len(data), hashlib.sha256(data).hexdigest()
+    except DownloadError as error:
+        result.status, result.error, result.hint = "failed", str(error), error.hint
+    merged = read_manifest(manifest)
+    merged[feed_id] = result
+    write_manifest(merged, manifest)
+    return result
+
+
 def summarize(results: list[FeedResult]) -> str:
     lines = []
     counts = defaultdict(int)
@@ -465,7 +495,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--force", action="store_true", help="download even if unchanged")
     parser.add_argument("--no-extract", action="store_true")
     parser.add_argument("--prompt", action="store_true", help="ask for missing credentials")
+    parser.add_argument("--register", metavar="FEED_ID",
+                        help="record a zip placed by hand at data/raw/<FEED_ID>.zip instead of downloading")
     args = parser.parse_args(argv)
+
+    if args.register:
+        result = register_local(args.register)
+        print(summarize([result]))
+        return 0 if result.ok else 1
 
     rows = select_rows(read_catalog(), args.feeds.split(",") if args.feeds else None, args.layer)
     results = download_all(rows, CredentialStore(interactive=args.prompt), workers=args.workers,

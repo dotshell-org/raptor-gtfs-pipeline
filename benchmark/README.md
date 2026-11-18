@@ -35,8 +35,8 @@ There are two data layers:
 |---|---|---|---|
 | 0 | Scaffold | this folder | done |
 | 1 | Feed catalogue | `catalog/` | done |
-| 2 | Download latest versions, credentials | `gtfs_bench/download.py` | in review |
-| 3 | Merge N feeds into one per tier | `gtfs_bench/` + `tests/` | |
+| 2 | Download latest versions, credentials | `gtfs_bench/download.py` | done |
+| 3 | Merge N feeds into one per tier | `gtfs_bench/` + `tests/` | in review |
 | 4 | Notebook running the whole chain | `notebooks/gtfs_france.ipynb` | |
 | 5 | Pipeline conversion, measured | `gtfs_bench/convert.py` | |
 | 6 | Engine harness (`:benchmark-engine`) | `engine/` | |
@@ -95,6 +95,61 @@ Downloads are treated as untrusted:
 - a zip that only wraps another zip is unwrapped;
 - extraction keeps only the feed's `.txt` files, flattened, so no entry can land outside
   its folder.
+
+A feed the script cannot reach can be placed by hand at `data/raw/<feed_id>.zip`.
+`python -m gtfs_bench.download --register <feed_id>` puts it through the same checks,
+unpacks it, and records it as `manual` in the manifest.
+
+## Merging
+
+The merge has two stages: each feed is first normalized on its own, then each tier is
+merged from the normalized feeds.
+
+**`normalize.py`, one feed → `data/normalized/<feed_id>/*.parquet`.** This stage settles
+what the pipeline would trip over and what two feeds would collide on:
+
+- every id gets the `feed_id:` prefix, references included;
+- only physical stops inside mainland France are kept (the pipeline reads neither
+  `location_type` nor `parent_station`);
+- the catalogue's agency and `stop_id` filters are applied;
+- calendars become explicit dates inside the window;
+- `frequencies.txt` becomes trips;
+- missing times are interpolated along the distance;
+- forbidden and trip-to-trip transfers are dropped (the pipeline ignores `transfer_type`).
+
+Results are cached per (source sha256, window, filters), and a `report.json` counts every
+drop and its reason.
+
+**`merge.py`, normalized feeds → `data/merged/<tier kind>/<tier>.zip`, one per tier:**
+
+| Tier | Feeds |
+|---|---|
+| `metropole:<key>` | the rows with that `metropole` |
+| `region:<code>` | the rows of that region, plus national rows clipped to it (trips serving ≥ 2 stops inside, cut to them) |
+| `france` | every included row |
+
+On top of the union, the merge:
+
+1. drops trips carried by two feeds (same stops to ~10 m, same times, same dates); the
+   lower `priority` keeps them;
+2. drops orphans;
+3. renames stops that share a name across distant places (`names.py`): "Mairie
+   (Vénissieux)". raptor-kmp links every pair of same-name stops with a 120 s transfer,
+   and across France that would teleport between towns;
+4. adds walking transfers between stops less than 300 m apart, at most 30 neighbours,
+   both ways (`transfers.py`), on top of the producers' own;
+5. checks that every reference resolves before writing the zip.
+
+`merge.pattern_overlaps()` lists the feed pairs that run the same stop sequences, times
+ignored. Use it after changing the catalogue: a network carried by two feeds in two
+versions of its timetable slips past trip deduplication, which compares times.
+
+The output carries `agency`, `stops`, `routes`, `trips`, `stop_times`,
+`calendar_dates` (explicit dates, no `calendar.txt`), `transfers` and `feed_info`, in
+`Europe/Paris`. Shapes and fares are not carried: routing does not use them.
+
+Boundaries come from Etalab's 2025 administrative contours, downloaded once into
+`data/geo/`.
 
 ## Tests
 

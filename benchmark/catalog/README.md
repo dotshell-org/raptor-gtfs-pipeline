@@ -29,9 +29,9 @@ python -m gtfs_bench.catalog check        # gtfs_france.csv against the PAN toda
 | 27 Bourgogne-Franche-Comté | 24 | 1 | no aggregate: urban networks + Mobigo per département |
 | 28 Normandie | 2 | 27 | Atoumod aggregate + Astuce |
 | 32 Hauts-de-France | 48 | 7 | no aggregate: urban networks + regional coaches per département |
-| 44 Grand Est | 7 | 45 | Grand Est aggregate + CTS, Le Met', Stan + 3 networks missing from it (TCAT Troyes among them) |
+| 44 Grand Est | 7 | 45 | Grand Est aggregate + CTS, Le Met', Stan + TCAT and ELSA (carried by the aggregate as TRO and CCSelestat, taken out of it) + Neobus |
 | 52 Pays de la Loire | 8 | 13 | Destineo aggregate + Naolib + SETRAM and 5 small networks missing from it |
-| 53 Bretagne | 8 | 28 | Korrigo aggregate + STAR, Bibus + 5 networks missing from it |
+| 53 Bretagne | 8 | 28 | Korrigo aggregate + STAR, Bibus + Glazgo (carried by Korrigo as Auray Bus, taken out of it) + 4 networks missing from it |
 | 75 Nouvelle-Aquitaine | 9 | 48 | NA Mobilités aggregate + TBM + 7 networks missing from it |
 | 76 Occitanie | 36 | 3 | no aggregate: urban networks + liO coaches |
 | 84 Auvergne-Rhône-Alpes | 27 | 53 | Oùra aggregate + TCL, STAS, M TAG, T2C, SIBRA, Citéa and others missing from it |
@@ -85,6 +85,22 @@ The regexes are RE2 (DuckDB) and Python compatible. Only metacharacters are esca
 - feeds with no trips;
 - carpooling lines;
 - Monaco's buses (foreign) and every overseas network.
+
+**Checked on the data, after the merge (step 3).** `gtfs_bench.merge.pattern_overlaps` compares
+the stop patterns of every pair of feeds, times ignored, so it catches two versions of the
+same timetable. Exact-trip deduplication would miss them.
+
+On the 30 November 2026 week, it found three networks the name matching had missed:
+
+| Network | Carried by the aggregate as | Patterns found there |
+|---|---|---|
+| TCAT (Troyes) | TRO, Grand Est | 207 of 210 |
+| ELSA (Sélestat) | CCSelestat, Grand Est | 9 of 10 |
+| Glazgo (Auray) | Auray Bus, Korrigo | 9 of 9 |
+
+All three now come from their producer's feed and are dropped from the aggregates. The
+only other pair is Compiègne's urban and interurban TIC networks, which share 5 of 86
+patterns. That is legitimate, and trip deduplication handles it.
 
 ## Open points for review
 
