@@ -19,9 +19,11 @@ python-dotenv==1.2.4
 # Measuring the pipeline (peak RSS of the JVM process tree).
 psutil==7.2.2
 
-# Notebook, charts, progress.
+# Notebook, charts, progress, and the terminal explorer.
 jupyter==1.1.1
 matplotlib==3.11.2
 tqdm==4.70.1
+textual==8.2.8
+rich==15.0.0
 
 pytest==9.2.0

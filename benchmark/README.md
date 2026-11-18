@@ -145,6 +145,38 @@ python -m gtfs_bench.engine --tiers france --no-sweep
 These are desktop JVM numbers (JDK 21, Core Ultra 5 135H). A phone runs ART on a slower
 core: the heap figures carry over, the times do not.
 
+## Explorer: try the engine yourself
+
+`python -m gtfs_bench.explorer` opens a terminal app on top of the real engine. raptor-kmp
+runs in a JVM with France loaded once, and you pick two stops anywhere in it:
+
+- **Search:** type a few letters of a stop. Case and accents do not matter, and the commune
+  counts too ("lyon gambetta"). A place is every stop sharing a name. Enter or a click
+  picks it.
+- **Time:** a departure time, or "arriver avant" for arrive-by. The day is the
+  benchmark's reference day.
+- **Result:** the itinerary, leg by leg, with lines, stops and walks, and the alternatives
+  raptor-kmp returns (fewer changes against earlier arrival). The time shown is the
+  raptor-kmp call alone, measured inside the JVM.
+- **Map:** France in braille, with every stop of the network as faint dots and the trip
+  drawn over them. Ctrl+T switches between the zoom on the trip and the whole of France.
+- **Shortcuts:** Ctrl+R for a random trip (two places 2 to 40 km apart), Ctrl+E to swap,
+  Ctrl+G to compute.
+
+```bash
+python -m gtfs_bench.explorer                         # France
+python -m gtfs_bench.explorer --tier metropole:lyon   # any converted tier
+```
+
+It needs the tier converted (the notebook) and `:benchmark-engine:installDist`.
+
+- **Startup:** France takes about 8 s, which covers loading the network, indexing 170,000
+  places, and a JIT warm-up of 30 queries.
+- **First run:** naming the commune of each place takes a few more seconds, once, and is
+  then cached in `data/tmp/explorer/`.
+- **Coverage:** until step 8, there are no TGV or Intercités, so long trips across France
+  find nothing or a chain of TER.
+
 ## Credentials
 
 Most feeds come from [transport.data.gouv.fr](https://transport.data.gouv.fr) and need no
