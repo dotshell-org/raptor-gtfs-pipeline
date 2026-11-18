@@ -1,7 +1,8 @@
 # Whole-France GTFS benchmark
 
 **Question:** can [raptor-kmp](https://github.com/dotshell-org/raptor-kmp) route over a GTFS
-covering all of mainland France, on a phone and on a server?
+covering all of mainland France, on a phone and on a server? **Answer so far:** see
+[RESULTS.md](RESULTS.md).
 
 The pipeline converts one feed per run. Answering the question takes an input it has never
 seen: every reasonably complete French feed, merged into one. This folder builds that input,
@@ -39,8 +40,8 @@ There are two data layers:
 | 3 | Merge N feeds into one per tier | `gtfs_bench/` + `tests/` | done |
 | 4 | Notebook running the whole chain | `notebooks/gtfs_france.ipynb` | done |
 | 5 | Pipeline conversion, measured | `gtfs_bench/convert.py` | done |
-| 6 | Engine harness (`:benchmark-engine`) | `engine/` + `gtfs_bench/engine.py` | in review |
-| 7 | Report | `RESULTS.md` | |
+| 6 | Engine harness (`:benchmark-engine`) | `engine/` + `gtfs_bench/engine.py` | done |
+| 7 | Report | [`RESULTS.md`](RESULTS.md) | in review |
 | 8 | Long-distance layer, connected France | catalogue + `gtfs_bench/connectivity.py` | |
 
 ## Setup
@@ -67,7 +68,8 @@ python -m venv .venv
 8. tier statistics;
 9. checks;
 10. conversion of every tier by the pipeline;
-11. raptor-kmp on every tier, and the heap sweep.
+11. raptor-kmp on every tier, and the heap sweep;
+12. optionally, France with the producers' stop names (`gtfs_bench/variants.py`).
 
 **Building the pipeline needs JDK 21.** Kotlin 2.1.0 cannot parse Java 25's version string,
 so `./gradlew` fails with an internal compiler error when the Gradle daemon runs on JDK 25.
@@ -97,6 +99,7 @@ The notebook is committed without outputs. What it measures lands in `results/`:
 | `engine/*.json`, `engine.csv`, `engine_scenarios.csv` | raptor-kmp per tier: load, heap, latency of every query set, named trips |
 | `engine_heap.csv` | whether Lyon, AURA, Île-de-France and France load and route under -Xmx 256 MB to 4 GB |
 | `engine_local_trips.png`, `engine_heap.png`, `engine_latency.png` | the engine figures |
+| `engine_same_name_links.csv` | France with and without the merge's renaming of homonym stops |
 
 **The reference day** is the Tuesday, outside school holidays, that the most feeds run
 on, then the one with the most trips. It is computed from the downloaded calendars over

@@ -40,7 +40,7 @@ import pandas as pd
 
 from . import geo
 from .catalog import BENCHMARK_DIR, METROPOLES
-from .names import NamesReport, disambiguate
+from .names import NamesReport, disambiguate, implicit_transfer_pairs
 from .normalize import NORMALIZED_DIR, TABLES, _sql_str, connect, insert_rows as _insert
 from .transfers import TransferParams, walking_transfers
 
@@ -64,6 +64,9 @@ class Tier:
 @dataclass(frozen=True)
 class MergeParams:
     name_radius_m: float = 500.0
+    #: False keeps the producers' stop names, homonyms included: only to measure what the
+    #: engine's same-name links cost (benchmark/RESULTS.md), never for a real dataset.
+    rename_homonyms: bool = True
     transfers: TransferParams = TransferParams()
     #: Service dates kept in the output; None keeps the whole normalization window.
     dates: tuple[dt.date, ...] | None = None
@@ -259,6 +262,11 @@ def _drop_orphans(con) -> None:
 
 def _rename(con, params: MergeParams, commune_lookup) -> NamesReport:
     stops = con.execute("SELECT stop_id, stop_name, lat, lon FROM m_stops ORDER BY stop_id").df()
+    if not params.rename_homonyms:
+        names = stops["stop_name"].fillna("")
+        largest = int(names.value_counts().max()) if len(names) else 0
+        pairs = implicit_transfer_pairs(names)
+        return NamesReport(len(stops), 0, 0, largest, largest, pairs, pairs)
     new_names, report = disambiguate(stops, commune_lookup, params.name_radius_m)
     renamed = pd.DataFrame({"stop_id": stops["stop_id"], "new_name": new_names})
     renamed = renamed[new_names != stops["stop_name"].fillna("")]

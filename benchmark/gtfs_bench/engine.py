@@ -40,7 +40,7 @@ def tier_dir(key: str) -> Path:
 
 
 def run_harness(key: str, xmx: str = "12g", mode: str = "full", out: Path | None = None, java: str | None = None,
-                extra: tuple[str, ...] = (), timeout_s: int = 3600) -> dict:
+                extra: tuple[str, ...] = (), timeout_s: int = 3600, data_dir: Path | None = None) -> dict:
     """One JVM, one tier. Returns the harness's report plus the process's peak working set."""
     if not (ENGINE_INSTALL / "lib").exists():
         raise FileNotFoundError(f"{ENGINE_INSTALL} is missing: run ./gradlew :benchmark-engine:installDist")
@@ -49,7 +49,7 @@ def run_harness(key: str, xmx: str = "12g", mode: str = "full", out: Path | None
     if out.exists():
         out.unlink()
     command = [java_executable(java), f"-Xmx{xmx}", "-cp", str(ENGINE_INSTALL / "lib" / "*"), MAIN_CLASS,
-               "--data", str(tier_dir(key)), "--tier", key, "--out", str(out), "--mode", mode,
+               "--data", str(data_dir or tier_dir(key)), "--tier", key, "--out", str(out), "--mode", mode,
                "--areas", str(ENGINE_DIR / "areas.csv"), "--scenarios", str(ENGINE_DIR / "scenarios.csv"), *extra]
     started = time.perf_counter()
     peak = 0.0
