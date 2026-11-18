@@ -1,0 +1,4 @@
+tier,status,exit_code,seconds,peak_memory_mb,xmx,java,input_zip_mb,stops_bin_mb,routes_bin_mb,index_bin_mb,stops,routes,trips,stop_times,transfers,trips_found,trips_kept_share,error
+france,out_of_memory,1,150.0,4284,4g,"openjdk version ""21.0.7"" 2025-04-15 LTS",198.2,0.0,0.0,0.0,,,,,,,,"Exception in thread ""main"" java.lang.OutOfMemoryError: Java heap space"
+france,out_of_memory,1,135.4,6461,6g,"openjdk version ""21.0.7"" 2025-04-15 LTS",198.2,0.0,0.0,0.0,,,,,,,,"Exception in thread ""main"" java.lang.OutOfMemoryError: Java heap space"
+france,ok,0,134.1,8564,8g,"openjdk version ""21.0.7"" 2025-04-15 LTS",198.2,25.72,38.44,7.28,293369,35453,397479,8997877,1143341,481002,0.8264,

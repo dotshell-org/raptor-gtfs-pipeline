@@ -75,6 +75,37 @@ def coverage_chart(daily: pd.DataFrame, holidays: list[tuple[dt.date, dt.date]],
     return path
 
 
+def pipeline_chart(points: pd.DataFrame, path: Path, labelled: dict[str, str] | None = None) -> Path:
+    """Pipeline peak memory against the stop_times it read, one dot per tier, log–log.
+
+    `points` has columns tier, kind, stop_times (merged week, what the pipeline reads in
+    full before keeping the reference day) and peak_memory_mb.
+    """
+    labelled = labelled or {}
+    fig, ax = plt.subplots(figsize=(8.5, 5.2), facecolor=SURFACE)
+    _style(ax)
+    for kind in ("metropole", "region", "france"):
+        part = points[points["kind"] == kind]
+        ax.scatter(part["stop_times"], part["peak_memory_mb"] / 1024, s=46 if kind != "france" else 80,
+                   color=SERIES[kind], edgecolor=SURFACE, linewidth=2, label=KIND_LABEL[kind], zorder=3)
+    for row in points.itertuples():
+        if row.tier in labelled:
+            ax.annotate(labelled[row.tier], (row.stop_times, row.peak_memory_mb / 1024), xytext=(7, -3),
+                        textcoords="offset points", fontsize=8.5, color=INK_SECONDARY)
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.yaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda v, _: f"{v:g} GB"))
+    ax.set_xlabel("stop_times read by the pipeline (merged week)")
+    ax.set_ylabel("Peak memory of the pipeline's JVM")
+    ax.set_title("Pipeline memory grows with the week it reads", loc="left", fontsize=10.5, color=INK, pad=8)
+    legend = ax.legend(frameon=False, loc="upper left", fontsize=9)
+    for text in legend.get_texts():
+        text.set_color(INK_SECONDARY)
+    fig.savefig(path, dpi=150, bbox_inches="tight", facecolor=SURFACE)
+    plt.close(fig)
+    return path
+
+
 def tiers_chart(stats: pd.DataFrame, path: Path, labelled: dict[str, str] | None = None) -> Path:
     """Stops against trips on the reference day, one dot per tier, log–log, coloured by kind.
 

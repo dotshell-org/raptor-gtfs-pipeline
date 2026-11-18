@@ -37,8 +37,8 @@ There are two data layers:
 | 1 | Feed catalogue | `catalog/` | done |
 | 2 | Download latest versions, credentials | `gtfs_bench/download.py` | done |
 | 3 | Merge N feeds into one per tier | `gtfs_bench/` + `tests/` | done |
-| 4 | Notebook running the whole chain | `notebooks/gtfs_france.ipynb` | in review |
-| 5 | Pipeline conversion, measured | `gtfs_bench/convert.py` | |
+| 4 | Notebook running the whole chain | `notebooks/gtfs_france.ipynb` | done |
+| 5 | Pipeline conversion, measured | `gtfs_bench/convert.py` | in review |
 | 6 | Engine harness (`:benchmark-engine`) | `engine/` | |
 | 7 | Report | `RESULTS.md` | |
 | 8 | Long-distance layer, connected France | catalogue + `gtfs_bench/connectivity.py` | |
@@ -65,7 +65,18 @@ python -m venv .venv
 6. normalization;
 7. merge of the 22 métropoles, the 13 regions and France;
 8. tier statistics;
-9. checks.
+9. checks;
+10. conversion of every tier by the pipeline.
+
+**Building the pipeline needs JDK 21.** Kotlin 2.1.0 cannot parse Java 25's version string,
+so `./gradlew` fails with an internal compiler error when the Gradle daemon runs on JDK 25.
+Point `JAVA_HOME` at a JDK 21, for instance the one Gradle provisions for the toolchain:
+
+```bash
+JAVA_HOME=~/.gradle/jdks/eclipse_adoptium-21-amd64-windows.2 ./gradlew :cli:installDist
+```
+
+The notebook runs the pipeline with the same `JAVA_HOME`.
 
 Open it with the `.venv` interpreter as kernel, or run it headless from `notebooks/`:
 
@@ -81,6 +92,7 @@ The notebook is committed without outputs. What it measures lands in `results/`:
 | `feeds_used.csv` | the sha256 and calendar of every feed version that went in |
 | `merge_stats.csv`, `tiers.png` | the size of each tier, over the week and on the reference day |
 | `pattern_overlaps.csv` | feeds that run the same stop sequences |
+| `pipeline.csv` | per tier: conversion time, peak memory, `.bin` sizes, trips kept |
 
 **The reference day** is the Tuesday, outside school holidays, that the most feeds run
 on, then the one with the most trips. It is computed from the downloaded calendars over
