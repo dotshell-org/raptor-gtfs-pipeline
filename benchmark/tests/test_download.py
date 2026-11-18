@@ -161,6 +161,18 @@ def test_register_a_zip_placed_by_hand(dirs):
     assert register_local("bad", **dirs).status == "failed"
 
 
+def test_a_manual_feed_is_left_alone_by_downloads(server, dirs):
+    from gtfs_bench.download import register_local
+
+    dirs["raw_dir"].mkdir(parents=True)
+    (dirs["raw_dir"] / "tcl.zip").write_bytes(FEED)
+    register_local("tcl", **dirs)
+    # The URL would answer 401: the run must not even try, nor overwrite the entry.
+    [kept] = run([row("tcl", f"{server}/private.zip", auth="grandlyon")], dirs)
+    assert kept.status == "manual"
+    assert read_manifest(dirs["manifest"])["tcl"].status == "manual"
+
+
 def test_extraction_never_writes_outside_its_folder(tmp_path):
     archive = tmp_path / "evil.zip"
     files = dict(MINIMAL_FEED)

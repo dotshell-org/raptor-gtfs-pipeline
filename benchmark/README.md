@@ -36,8 +36,8 @@ There are two data layers:
 | 0 | Scaffold | this folder | done |
 | 1 | Feed catalogue | `catalog/` | done |
 | 2 | Download latest versions, credentials | `gtfs_bench/download.py` | done |
-| 3 | Merge N feeds into one per tier | `gtfs_bench/` + `tests/` | in review |
-| 4 | Notebook running the whole chain | `notebooks/gtfs_france.ipynb` | |
+| 3 | Merge N feeds into one per tier | `gtfs_bench/` + `tests/` | done |
+| 4 | Notebook running the whole chain | `notebooks/gtfs_france.ipynb` | in review |
 | 5 | Pipeline conversion, measured | `gtfs_bench/convert.py` | |
 | 6 | Engine harness (`:benchmark-engine`) | `engine/` | |
 | 7 | Report | `RESULTS.md` | |
@@ -52,6 +52,40 @@ python -m venv .venv
 .venv/Scripts/python -m pip install -r requirements.txt   # Windows
 .venv/bin/python -m pip install -r requirements.txt       # Linux / macOS
 ```
+
+## Running it
+
+`notebooks/gtfs_france.ipynb` runs the whole chain, top to bottom:
+
+1. configuration;
+2. credentials;
+3. catalogue summary;
+4. download;
+5. choice of the reference day;
+6. normalization;
+7. merge of the 22 métropoles, the 13 regions and France;
+8. tier statistics;
+9. checks.
+
+Open it with the `.venv` interpreter as kernel, or run it headless from `notebooks/`:
+
+```bash
+../.venv/Scripts/python -m jupyter nbconvert --to notebook --execute gtfs_france.ipynb --output gtfs_france.out.ipynb
+```
+
+The notebook is committed without outputs. What it measures lands in `results/`:
+
+| File | Contents |
+|---|---|
+| `reference_day.json`, `coverage.csv`, `coverage.png` | how the reference day was chosen |
+| `feeds_used.csv` | the sha256 and calendar of every feed version that went in |
+| `merge_stats.csv`, `tiers.png` | the size of each tier, over the week and on the reference day |
+| `pattern_overlaps.csv` | feeds that run the same stop sequences |
+
+**The reference day** is the Tuesday, outside school holidays, that the most feeds run
+on, then the one with the most trips. It is computed from the downloaded calendars over
+the next six weeks. The pipeline converts that one day, and the merge keeps its whole
+week.
 
 ## Credentials
 

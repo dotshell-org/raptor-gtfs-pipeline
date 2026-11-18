@@ -74,6 +74,7 @@ def connect(memory_limit: str = "6GB", threads: int | None = None) -> duckdb.Duc
     con.execute(f"SET memory_limit = '{memory_limit}'")
     con.execute(f"SET temp_directory = '{TMP_DIR.as_posix()}'")
     con.execute("SET preserve_insertion_order = false")
+    con.execute("SET enable_progress_bar = false")  # it would draw widgets into the notebook
     if threads:
         con.execute(f"SET threads = {int(threads)}")
     return con
@@ -369,6 +370,35 @@ def normalize_feed(row: dict, window: Window, con: duckdb.DuckDBPyConnection | N
             except (duckdb.Error, FeedError) as error:
                 if isinstance(error, FeedError) and "is missing" in str(error):
                     raise  # another reading mode will not conjure a missing file
+                last_error = error
+        raise FeedError(f"unreadable in every CSV mode, last error: {last_error}")
+    finally:
+        if own:
+            con.close()
+
+
+def trips_per_day(row: dict, window: Window, con: duckdb.DuckDBPyConnection | None = None,
+                  extracted_dir: Path = EXTRACTED_DIR) -> pd.DataFrame:
+    """Trips each date of `window` runs in the raw feed (date, trips), before any filter.
+
+    Used to pick the reference day, before anything is normalized: it reads only trips,
+    calendar and calendar_dates.
+    """
+    folder = extracted_dir / row["feed_id"]
+    own = con is None
+    con = con or connect()
+    try:
+        last_error: Exception | None = None
+        for encoding, parallel in CSV_MODES:
+            try:
+                cols = {name: _register_csv(con, folder, name, required=name == "trips", encoding=encoding, parallel=parallel)
+                        for name in ("trips", "calendar", "calendar_dates")}
+                if "service_id" not in cols["trips"]:
+                    raise FeedError("trips.txt has no service_id")
+                _service_dates(con, cols["calendar"], cols["calendar_dates"], window)
+                return con.execute("""SELECT d.date, count(*) AS trips FROM raw_trips t JOIN n_dates d USING (service_id)
+                                      GROUP BY d.date ORDER BY d.date""").df()
+            except (duckdb.Error, FeedError) as error:
                 last_error = error
         raise FeedError(f"unreadable in every CSV mode, last error: {last_error}")
     finally:

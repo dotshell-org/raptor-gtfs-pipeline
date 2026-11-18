@@ -106,7 +106,8 @@ def built(tmp_path_factory):
     merge_module._area = lambda code: AURA if code == "84" else MAINLAND
     try:
         tier = Tier("region:84", "region", "AURA", tuple(ROWS.values()), area_code="84")
-        region = merge_tier(tier, MergeParams(), normalized, merged, commune_lookup=fake_communes, progress=lambda s: None)
+        region = merge_tier(tier, MergeParams(reference_date=dt.date(2026, 12, 1)), normalized, merged,
+                            commune_lookup=fake_communes, progress=lambda s: None)
         metro = merge_tier(Tier("metropole:lyon", "metropole", "Lyon", (ROWS["urb"],)), MergeParams(), normalized, merged,
                            commune_lookup=fake_communes, progress=lambda s: None)
     finally:
@@ -213,6 +214,25 @@ def test_written_feed_is_consistent(built):
     with zipfile.ZipFile(built["region_zip"]) as archive:
         assert sorted(archive.namelist()) == sorted(
             ["agency.txt", "stops.txt", "routes.txt", "trips.txt", "stop_times.txt", "calendar_dates.txt", "transfers.txt", "feed_info.txt"])
+
+
+def test_reference_day_counts(built):
+    # Tuesday 1 Dec: urb T1, T2, T3 and the three frequency runs; agg T9; nat TN2, TN3.
+    region = built["region"]
+    assert region.reference_date == "2026-12-01"
+    assert region.trips_on_reference_date == 9
+    assert region.stop_times_on_reference_date == 20
+    assert built["metro"].trips_on_reference_date == 0   # no reference date asked
+
+
+def test_trips_per_day_reads_raw_calendars(built):
+    from gtfs_bench.normalize import trips_per_day
+
+    days = trips_per_day(ROWS["urb"], WEEK, None, built["root"] / "extracted")
+    by_day = {d.date(): n for d, n in zip(days["date"], days["trips"])} if hasattr(days["date"].iloc[0], "date") else dict(zip(days["date"], days["trips"]))
+    assert by_day[dt.date(2026, 12, 1)] == 4            # T1, T2, T3, F1 template: raw, before expansion
+    assert dt.date(2026, 12, 2) not in by_day           # removed by calendar_dates
+    assert dt.date(2026, 12, 5) not in by_day           # Saturday
 
 
 def test_metropole_tier_holds_only_its_network(built):

@@ -413,10 +413,17 @@ def download_all(rows: list[dict], credentials: CredentialStore | None = None, w
     credentials = credentials or CredentialStore()
     previous = read_manifest(manifest)
     by_url: dict[str, list[dict]] = defaultdict(list)
+    results: dict[str, FeedResult] = {}
     for row in rows:
+        kept = previous.get(row["feed_id"])
+        # A feed registered by hand stays as it is unless --force: the script could not
+        # fetch it in the first place (TCL), and trying again would only record a failure.
+        if not force and kept is not None and kept.status == "manual" and (raw_dir / f"{row['feed_id']}.zip").exists():
+            results[row["feed_id"]] = kept
+            progress(f"[  -/  -] manual       (kept)      {row['feed_id']}")
+            continue
         by_url[row["url"]].append(row)
 
-    results: dict[str, FeedResult] = {}
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {
             pool.submit(fetch, group[0], previous.get(group[0]["feed_id"]), credentials, force, raw_dir): group

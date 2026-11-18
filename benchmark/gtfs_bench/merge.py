@@ -67,6 +67,8 @@ class MergeParams:
     transfers: TransferParams = TransferParams()
     #: Service dates kept in the output; None keeps the whole normalization window.
     dates: tuple[dt.date, ...] | None = None
+    #: The day the pipeline will convert: the report also counts what runs on it.
+    reference_date: dt.date | None = None
     memory_limit: str = "6GB"
 
 
@@ -75,6 +77,10 @@ class TierReport:
     tier: str
     feeds: list
     dates: list
+    reference_date: str = ""
+    trips_on_reference_date: int = 0
+    stop_times_on_reference_date: int = 0
+    stops_on_reference_date: int = 0
     agencies: int = 0
     routes: int = 0
     trips: int = 0
@@ -168,6 +174,13 @@ def merge_tier(tier: Tier, params: MergeParams = MergeParams(), normalized_dir: 
             setattr(report, attr, con.execute(f"SELECT count(*) FROM {table}").fetchall()[0][0])
         report.trips_by_feed = dict(con.execute(
             "SELECT feed_id, count(*) FROM m_trips GROUP BY feed_id ORDER BY 2 DESC").fetchall())
+        if params.reference_date:
+            report.reference_date = params.reference_date.isoformat()
+            con.execute(f"""CREATE OR REPLACE TEMP TABLE day_trips AS SELECT trip_id FROM m_trips
+                WHERE service_id IN (SELECT service_id FROM m_dates WHERE date = DATE {_sql_str(report.reference_date)})""")
+            report.trips_on_reference_date = con.execute("SELECT count(*) FROM day_trips").fetchall()[0][0]
+            report.stop_times_on_reference_date, report.stops_on_reference_date = con.execute(
+                "SELECT count(*), count(DISTINCT stop_id) FROM m_stop_times WHERE trip_id IN (SELECT trip_id FROM day_trips)").fetchall()[0]
         report.zip_bytes = target.stat().st_size
         report.seconds = round(time.time() - started, 1)
         (out_dir / f"{tier.file_stem}.report.json").write_text(
