@@ -31,6 +31,7 @@ from textual.worker import get_current_worker
 
 from . import mapview
 from .backend import EngineServer, Journey, RouteResult
+from .loading import SPINNER, LoadingView, seconds_text
 from .places import Place, PlaceIndex
 
 DAYS = ("lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche")
@@ -41,6 +42,19 @@ MONTHS = ("janvier", "février", "mars", "avril", "mai", "juin", "juillet", "ao�
 # default is 5 rounds; the explorer lets you go much higher, for the fun of absurd itineraries.
 DEFAULT_CHANGES = 4
 MAX_CHANGES = 99
+
+# Start-up steps: key, label, weight = its usual seconds on France (cached communes), for the
+# overall bar.
+LOAD_STEPS = [
+    ("engine", "Démarrage du moteur, lecture des .bin", 1.2),
+    ("stops", "Liste des arrêts", 0.9),
+    ("places", "Regroupement des arrêts en lieux", 3.8),
+    ("communes", "Commune de chaque lieu", 0.5),
+    ("outline", "Contour de la France", 0.1),
+    ("warmup", "Échauffement du moteur (JIT)", 2.0),
+    ("dots", "Points du réseau pour la carte", 0.1),
+]
+WARMUP_QUERIES = 30
 
 
 def day_text(day: dt.date) -> str:
@@ -170,6 +184,8 @@ class Explorer(App):
         self.history: deque[str] = deque(maxlen=12)
         self.rng = random.Random()
         self.changes_used = DEFAULT_CHANGES  # the limit of the result on screen
+        self.busy: tuple[str, float] | None = None  # a search under way: its text, its start
+        self.frame = 0
 
     # ── layout ───────────────────────────────────────────────────────────────────────
 
@@ -199,7 +215,8 @@ class Explorer(App):
                 yield Button("⇄", id="swap")
             yield Static("", id="history")
         with Vertical(id="right"):
-            yield Static("Chargement du moteur…", id="summary")
+            yield LoadingView(self.tier_name, LOAD_STEPS, id="loader")
+            yield Static("", id="summary")
             yield OptionList(id="alternatives")
             with VerticalScroll(id="legs_box"):  # an absurd journey has more legs than the screen
                 yield Static("", id="legs")
@@ -207,6 +224,9 @@ class Explorer(App):
         yield Footer()
 
     def on_mount(self) -> None:
+        for widget in ("#summary", "#alternatives", "#legs_box", "#map"):
+            self.query_one(widget).display = False
+        self.set_interval(1 / 12, self.spin)
         self.load()
 
     # ── loading ──────────────────────────────────────────────────────────────────────
@@ -214,28 +234,73 @@ class Explorer(App):
     @work(thread=True, exclusive=True, group="load")
     def load(self) -> None:
         started = time.perf_counter()
-        self.call_from_thread(self.status, "Chargement du réseau dans raptor-kmp…")
-        if self.server is None:
-            self.server = EngineServer(self.data_dir, self.java, self.xmx)
-        info = self.server.info
-        self.call_from_thread(self.status, f"Réseau chargé en {ms(info['loadMs'])}. Indexation des {thousands(info['stops'])} arrêts…")
-        index = PlaceIndex(self.server.stops())
-        cache = self.cache_dir / f"{self.data_dir.parent.name}-communes.json" if self.cache_dir else None
-        self.call_from_thread(self.status, f"{thousands(len(index))} lieux. Communes (calculées une fois, puis en cache)…")
-        index.attach_communes(cache, self.commune_lookup)
-        self.outline = self.given_outline if self.given_outline is not None else mapview.france_outline(
-            self.cache_dir / "france-outline.json" if self.cache_dir else None)
-        self.call_from_thread(self.status, "Échauffement du moteur (JIT)…")
-        warm = random.Random(7)
-        for _ in range(30):
-            a, b = index.random_pair(warm)
-            self.server.route(a.ids, b.ids, 8 * 3600)
-        self.network = (np.array([p.lat for p in index.places]), np.array([p.lon for p in index.places]))
+        loader = self.query_one("#loader", LoadingView)
+        current = "engine"
+
+        def step(method: str, key: str, *args) -> None:
+            nonlocal current
+            current = key
+            self.call_from_thread(getattr(loader, method), key, *args)
+
+        try:
+            step("start", "engine", f"Java {self.xmx}")
+            if self.server is None:
+                self.server = EngineServer(self.data_dir, self.java, self.xmx)
+            info = self.server.info
+            step("done", "engine", f"{ms(info['loadMs'])} dans raptor-kmp · {info['heapMb']:.0f} Mo de tas")
+
+            step("start", "stops")
+            stops = self.server.stops()
+            step("done", "stops", f"{thousands(len(stops))} arrêts")
+
+            step("start", "places")
+            index = PlaceIndex(stops)
+            step("done", "places", f"{thousands(len(index))} lieux")
+
+            cache = self.cache_dir / f"{self.data_dir.parent.name}-communes.json" if self.cache_dir else None
+            cached = cache is not None and cache.exists()
+            step("start", "communes", "depuis le cache" if cached else "première fois : quelques secondes, puis en cache")
+            index.attach_communes(cache, self.commune_lookup)
+            step("done", "communes", "depuis le cache" if cached else "calculées et mises en cache")
+
+            step("start", "outline")
+            self.outline = self.given_outline if self.given_outline is not None else mapview.france_outline(
+                self.cache_dir / "france-outline.json" if self.cache_dir else None)
+            step("done", "outline", f"{sum(len(ring) for ring in self.outline)} points")
+
+            step("start", "warmup")
+            warm = random.Random(7)
+            for i in range(WARMUP_QUERIES):
+                a, b = index.random_pair(warm)
+                self.server.route(a.ids, b.ids, 8 * 3600)
+                step("progress", "warmup", (i + 1) / WARMUP_QUERIES, f"{i + 1}/{WARMUP_QUERIES} recherches")
+            step("done", "warmup", f"{WARMUP_QUERIES} recherches au hasard")
+
+            step("start", "dots")
+            self.network = (np.array([p.lat for p in index.places]), np.array([p.lon for p in index.places]))
+            step("done", "dots", f"{thousands(len(index))} points")
+        except Exception as error:  # say which step broke, keep the window open
+            self.call_from_thread(loader.fail, current, f"Échec : {error}")
+            return
         self.index = index
         self.call_from_thread(self.ready, time.perf_counter() - started)
 
     def status(self, text: str) -> None:
+        self.busy = None
         self.query_one("#summary", Static).update(Text(text, style="italic"))
+
+    def spin(self) -> None:
+        """While a search runs, a spinner and its time so far in the summary."""
+        if self.busy is None:
+            return
+        self.frame += 1
+        text, since = self.busy
+        line = Text(f"{SPINNER[self.frame % len(SPINNER)]} ", style="bold #eb6834")
+        line.append(text, style="italic")
+        elapsed = time.perf_counter() - since
+        if elapsed > 0.25:
+            line.append(f"  {seconds_text(elapsed)}", style="dim")
+        self.query_one("#summary", Static).update(line)
 
     def ready(self, seconds: float) -> None:
         info = self.server.info
@@ -245,8 +310,14 @@ class Explorer(App):
         for widget in ("#from", "#to", "#go", "#random"):
             self.query_one(widget).disabled = False
         self.status(f"Prêt en {seconds:.1f} s. Choisis un départ et une arrivée, ou Ctrl+R pour un trajet au hasard.")
-        self.redraw_map()
         self.query_one("#from", Input).focus()
+        self.set_timer(0.8, self.reveal)  # leave the finished checklist on screen a moment
+
+    def reveal(self) -> None:
+        self.query_one("#loader").display = False
+        for widget in ("#summary", "#legs_box", "#map"):
+            self.query_one(widget).display = True
+        self.call_after_refresh(self.redraw_map)
 
     # ── choosing stops ───────────────────────────────────────────────────────────────
 
@@ -311,7 +382,9 @@ class Explorer(App):
         if changes is None:
             self.status(f"Correspondances max : un nombre de 0 à {MAX_CHANGES}.")
             return
-        self.status(f"Calcul {origin.name} → {destination.name}, {limit_text(changes)}…")
+        limit = f" (≤ {changes} corresp.)" if changes != DEFAULT_CHANGES else ""
+        self.busy = (f"Calcul {origin.name[:30]} → {destination.name[:30]}{limit}…", time.perf_counter())
+        self.spin()
         self.compute(origin, destination, when, arrive_by, changes)
 
     @on(Input.Submitted, "#time, #max_changes")
@@ -345,7 +418,7 @@ class Explorer(App):
 
     def show(self, origin: Place, destination: Place, when: int, arrive_by: bool, changes: int,
              result: RouteResult) -> None:
-        self.result, self.changes_used = result, changes
+        self.result, self.changes_used, self.busy = result, changes, None
         journeys = sorted(result.journeys, key=lambda j: (j.changes, j.arrival))
         self.journey = result.best(arrive_by)
         alternatives = self.query_one("#alternatives", OptionList)
@@ -357,7 +430,8 @@ class Explorer(App):
         if self.journey is None:
             summary = Text(f"Aucun itinéraire, {verb} {hhmm(when)}\n", style="bold #e34948")
             summary.append(f"calculé en {ms(result.ms)} · {limit_text(changes)}\n", style="dim")
-            summary.append("sans TGV ni Intercités pour l'instant · essaie plus de correspondances", style="dim")
+            hint = " · essaie plus de correspondances" if changes < 10 else " · ni même en zigzaguant"
+            summary.append("sans TGV ni Intercités pour l'instant" + hint, style="dim")
             self.query_one("#summary", Static).update(summary)
             self.query_one("#legs", Static).update("")
         else:

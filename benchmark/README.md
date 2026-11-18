@@ -179,7 +179,9 @@ python -m gtfs_bench.explorer --tier metropole:lyon   # any converted tier
 It needs the tier converted (the notebook) and `:benchmark-engine:installDist`.
 
 - **Startup:** France takes about 8 s, which covers loading the network, indexing 170,000
-  places, and a JIT warm-up of 30 queries.
+  places, and a JIT warm-up of 30 queries. A checklist shows each step live, with a spinner,
+  its time and what it found, under an overall bar; a failing step says why. Searches show
+  a spinner too, with their time once past a quarter of a second.
 - **First run:** naming the commune of each place takes a few more seconds, once, and is
   then cached in `data/tmp/explorer/`.
 - **Coverage:** until step 8, there are no TGV or Intercités, so long trips across France

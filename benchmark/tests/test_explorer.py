@@ -10,6 +10,7 @@ import pytest
 from gtfs_bench.explorer import mapview
 from gtfs_bench.explorer.app import Explorer, duration, hhmm, limit_text, ms, parse_changes, parse_time
 from gtfs_bench.explorer.backend import EngineError, Journey, Leg, RouteResult, parse_route
+from gtfs_bench.explorer.loading import LoadingView
 from gtfs_bench.explorer.places import PlaceIndex
 
 STOPS = [
@@ -148,6 +149,48 @@ def test_app_routes_between_two_picked_stops():
             await pilot.press("ctrl+r")      # random trip
             await pilot.pause(0.3)
             assert len(server.calls) >= 3 + 30   # 30 warm-up calls at load
+    asyncio.run(scenario())
+
+
+def test_loading_view_tracks_steps():
+    view = LoadingView("Test", [("a", "Premier", 1), ("b", "Second", 3)])
+    assert view.fraction(0) == 0
+    view.start("a")
+    view.done("a", "fait")
+    view.start("b")
+    view.progress("b", 0.5, "1/2")
+    assert abs(view.fraction(0) - (1 + 3 * 0.5) / 4) < 1e-9
+    text = view.render().plain
+    assert "✓  Premier" in text and "fait" in text and "1/2" in text and view.finished is None
+    view.done("b")
+    assert view.finished is not None and "100 %" in view.render().plain
+
+
+def test_app_shows_the_checklist_then_the_map():
+    async def scenario():
+        app = make_app(FakeServer())
+        async with app.run_test(size=(150, 45)) as pilot:
+            await wait_ready(app, pilot)
+            loader = app.query_one("#loader")
+            assert all(step.state == "done" for step in loader.steps.values())
+            assert "30/30" in loader.render().plain or "30 recherches" in loader.render().plain
+            await pilot.pause(1.2)
+            assert not loader.display and app.query_one("#map").display
+    asyncio.run(scenario())
+
+
+def test_app_says_which_loading_step_failed():
+    class BrokenServer(FakeServer):
+        def stops(self):
+            raise EngineError("engine stopped: boom")
+
+    async def scenario():
+        app = make_app(BrokenServer())
+        async with app.run_test(size=(150, 45)) as pilot:
+            await pilot.pause(0.5)
+            loader = app.query_one("#loader")
+            assert loader.steps["engine"].state == "done" and loader.steps["stops"].state == "fail"
+            assert "boom" in loader.render().plain and app.query_one("#from").disabled
     asyncio.run(scenario())
 
 
