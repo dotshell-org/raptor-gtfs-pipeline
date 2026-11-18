@@ -1,0 +1,27 @@
+# Pinned to the versions the benchmark was built and measured with (Python 3.14, Windows,
+# wheels only). Results are only comparable across runs on the same set.
+
+# Merging: out-of-core SQL over the feeds' CSV, parquet in between.
+# DuckDB 2 changed the relation API (no fetchone() on a relation): code here targets 2.x.
+duckdb==2.0.0
+pyarrow==26.0.1
+numpy==2.5.5
+pandas==3.1.1
+
+# Geography: walking transfers (KD-tree), region and commune polygons.
+scipy==1.18.1
+shapely==2.2.0
+
+# Downloads and credentials.
+requests==2.34.2
+python-dotenv==1.2.4
+
+# Measuring the pipeline (peak RSS of the JVM process tree).
+psutil==7.2.2
+
+# Notebook, charts, progress.
+jupyter==1.1.1
+matplotlib==3.11.2
+tqdm==4.70.1
+
+pytest==9.2.0
