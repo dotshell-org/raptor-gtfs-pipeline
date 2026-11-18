@@ -89,7 +89,7 @@ The regexes are RE2 (DuckDB) and Python compatible. Only metacharacters are esca
 ## Open points for review
 
 - **Uncertain duplicates:** Isibus and Pass'O are published under the generic network name `KEOLIS`. C'Bus is published as `ALEOP`. All three are refused as probably already in their region's aggregate. The Bordeaux airport shuttle is included although it may be in NA Mobilités. Trip deduplication during the merge (step 3) is the safety net, and its report will show whether they really overlapped.
-- **`drop_agencies` assumes the PAN's network names are the feeds' `agency_name` values.** Step 3 reports, for every filter, how many agencies it matched, so a name that does not match shows up rather than silently letting a duplicate through.
+- **`drop_agencies` assumes the PAN's network names are the feeds' `agency_name` values.** This held on the 18 November 2026 download: all 20 names match an agency of their feed exactly. Step 3 reports the match count for every filter, so a name that changes later shows up instead of silently letting a duplicate through.
 - **Gaps:**
   - The Corsican railway (CFC) feed expired in March 2026, so Corsica has no train.
   - TCL needs Data Grand Lyon credentials: without them, the Lyon métropole has no network.

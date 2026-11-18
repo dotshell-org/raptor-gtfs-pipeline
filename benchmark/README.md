@@ -34,8 +34,8 @@ There are two data layers:
 | # | Step | Where | Status |
 |---|---|---|---|
 | 0 | Scaffold | this folder | done |
-| 1 | Feed catalogue | `catalog/` | in review |
-| 2 | Download latest versions, credentials | `gtfs_bench/download.py` | |
+| 1 | Feed catalogue | `catalog/` | done |
+| 2 | Download latest versions, credentials | `gtfs_bench/download.py` | in review |
 | 3 | Merge N feeds into one per tier | `gtfs_bench/` + `tests/` | |
 | 4 | Notebook running the whole chain | `notebooks/gtfs_france.ipynb` | |
 | 5 | Pipeline conversion, measured | `gtfs_bench/convert.py` | |
@@ -69,6 +69,40 @@ To provide them:
 3. If it is missing from both, the notebook asks for it interactively.
 
 Credentials are never printed or written anywhere else.
+
+## Downloading
+
+```bash
+python -m gtfs_bench.download                   # every included feed (6 in parallel)
+python -m gtfs_bench.download --feeds tcl,idfm  # a few, included or not
+python -m gtfs_bench.download --prompt          # ask for missing credentials
+```
+
+Each feed lands in `data/raw/<feed_id>.zip` and is unpacked into `data/extracted/<feed_id>/`.
+`data/raw/manifest.csv` records, for each feed:
+
+- what was fetched and from where, with its sha256;
+- the dates its calendars cover;
+- for a failure, what went wrong and what to try.
+
+A rerun only fetches what changed. The previous ETag / Last-Modified are sent as a
+conditional GET, and a 304 keeps the file on disk.
+
+Downloads are treated as untrusted:
+
+- each one goes to a temporary name;
+- it must be a zip holding one GTFS feed before it replaces the previous version;
+- a zip that only wraps another zip is unwrapped;
+- extraction keeps only the feed's `.txt` files, flattened, so no entry can land outside
+  its folder.
+
+## Tests
+
+```bash
+python -m pytest
+```
+
+The tests need no network: downloads are exercised against a local HTTP server.
 
 ## Data
 

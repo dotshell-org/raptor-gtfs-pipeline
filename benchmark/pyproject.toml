@@ -1,0 +1,5 @@
+# Not a package to install: only the test runner's settings, so that
+# `python -m pytest` from this folder finds gtfs_bench and the tests.
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
