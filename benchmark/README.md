@@ -34,7 +34,7 @@ There are two data layers:
 | # | Step | Where | Status |
 |---|---|---|---|
 | 0 | Scaffold | this folder | done |
-| 1 | Feed catalogue | `catalog/` | |
+| 1 | Feed catalogue | `catalog/` | in review |
 | 2 | Download latest versions, credentials | `gtfs_bench/download.py` | |
 | 3 | Merge N feeds into one per tier | `gtfs_bench/` + `tests/` | |
 | 4 | Notebook running the whole chain | `notebooks/gtfs_france.ipynb` | |
