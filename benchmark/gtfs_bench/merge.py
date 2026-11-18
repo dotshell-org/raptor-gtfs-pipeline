@@ -20,8 +20,9 @@ On top of the union, the merge:
 2. drops stops, routes and agencies nothing uses any more;
 3. renames homonym stops by place (see names.py);
 4. adds walking transfers between nearby stops (see transfers.py), on top of the feeds'
-   own;
-5. writes a GTFS zip the pipeline reads as is, after checking that every reference in it
+   own, and, when asked, wider links around the stations of national networks;
+5. when asked, splits every route into one route per stop sequence (see _split_patterns);
+6. writes a GTFS zip the pipeline reads as is, after checking that every reference in it
    resolves.
 """
 
@@ -42,7 +43,7 @@ from . import geo
 from .catalog import BENCHMARK_DIR, METROPOLES
 from .names import NamesReport, disambiguate, implicit_transfer_pairs
 from .normalize import NORMALIZED_DIR, TABLES, _sql_str, connect, insert_rows as _insert
-from .transfers import TransferParams, walking_transfers
+from .transfers import StationParams, TransferParams, station_transfers, walking_transfers
 
 MERGED_DIR = BENCHMARK_DIR / "data" / "merged"
 COORD_DECIMALS = 4  # ~11 m north-south, ~8 m east-west in France
@@ -73,6 +74,11 @@ class MergeParams:
     #: The day the pipeline will convert: the report also counts what runs on it.
     reference_date: dt.date | None = None
     memory_limit: str = "6GB"
+    #: Wider links around the stops of `level=national` feeds (stations); None: plain
+    #: walking transfers only, as for the regional tiers.
+    stations: StationParams | None = None
+    #: One route per stop sequence, so that the pipeline keeps every trip (see _split_patterns).
+    split_patterns: bool = False
 
 
 @dataclass
@@ -92,7 +98,9 @@ class TierReport:
     service_dates: int = 0
     transfers_from_feeds: int = 0
     transfers_generated: int = 0
+    transfers_stations: int = 0      # station links not already among the walking transfers
     transfers: int = 0
+    routes_from_split: int = 0       # routes added by splitting routes per stop sequence
     trips_clipped_away: int = 0
     duplicate_trips: int = 0
     duplicate_trips_by_feed: dict = field(default_factory=dict)
@@ -155,10 +163,15 @@ def merge_tier(tier: Tier, params: MergeParams = MergeParams(), normalized_dir: 
         report.duplicate_trips, report.duplicate_trips_by_feed = _deduplicate(con)
         _drop_orphans(con)
         lap("deduplicate")
+        if params.split_patterns:
+            report.routes_from_split = _split_patterns(con)
+            lap("split_patterns")
         names_report = _rename(con, params, commune_lookup)
         report.names = asdict(names_report)
         lap("names")
-        report.transfers_from_feeds, report.transfers_generated = _transfers(con, params)
+        stations = {r["feed_id"] for r in tier.rows if r.get("level") == "national"}
+        report.transfers_from_feeds, report.transfers_generated, report.transfers_stations = _transfers(
+            con, params, stations)
         lap("transfers")
         out_dir = out_dir / tier.kind
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -276,15 +289,56 @@ def _rename(con, params: MergeParams, commune_lookup) -> NamesReport:
     return report
 
 
-def _transfers(con, params: MergeParams) -> tuple[int, int]:
+def _split_patterns(con) -> int:
+    """One route per stop sequence. Returns the routes added.
+
+    The pipeline keeps one stop sequence per route and direction, the most common, and
+    drops every trip that skips one of its stops (RouteBuilder, TripBuilder): an express TER
+    or a TGV that does not call at Mâcon is gone. RAPTOR's own routes are stop sequences,
+    so giving each sequence its own route_id loses nothing: the pipeline then keeps every
+    trip. The most common sequence keeps the original id, the others get "<id>~2", "~3"…
+    and a copy of the route's row (same names, so journeys read the same).
+    """
+    con.execute("""CREATE OR REPLACE TEMP TABLE trip_pattern AS
+        SELECT trip_id, md5(string_agg(stop_id, '|' ORDER BY stop_sequence)) AS pattern
+        FROM m_stop_times GROUP BY trip_id""")
+    con.execute("""CREATE OR REPLACE TEMP TABLE pattern_ids AS
+        SELECT route_id, direction_id, pattern,
+               row_number() OVER (PARTITION BY route_id ORDER BY count(*) DESC, direction_id NULLS FIRST, pattern) AS k
+        FROM m_trips JOIN trip_pattern USING (trip_id) GROUP BY route_id, direction_id, pattern""")
+    added = con.execute("SELECT count(*) FROM pattern_ids WHERE k > 1").fetchall()[0][0]
+    con.execute("""INSERT INTO m_routes
+        SELECT r.* REPLACE (r.route_id || '~' || p.k AS route_id)
+        FROM m_routes r JOIN (SELECT DISTINCT route_id, k FROM pattern_ids WHERE k > 1) p USING (route_id)""")
+    con.execute("""UPDATE m_trips SET route_id = x.new_route_id FROM (
+            SELECT t.trip_id, p.route_id || '~' || p.k AS new_route_id
+            FROM m_trips t JOIN trip_pattern tp USING (trip_id)
+            JOIN pattern_ids p ON p.route_id = t.route_id AND p.direction_id IS NOT DISTINCT FROM t.direction_id
+                              AND p.pattern = tp.pattern
+            WHERE p.k > 1) x
+        WHERE m_trips.trip_id = x.trip_id""")
+    return added
+
+
+def _transfers(con, params: MergeParams, station_feeds: set[str] = frozenset()) -> tuple[int, int, int]:
     """Feed transfers, then generated walking ones for the pairs the feeds say nothing about.
 
     A producer's time wins over the generated one: it may know of a long platform walk
-    that the distance between two stop coordinates does not show.
+    that the distance between two stop coordinates does not show. With params.stations, the
+    stops of `station_feeds` also get the wider station links. Returns the transfers from
+    the feeds, the walking ones generated, and the station links that came on top of those.
     """
     from_feeds = con.execute("SELECT count(*) FROM m_transfers").fetchall()[0][0]
-    stops = con.execute("SELECT stop_id, lat, lon FROM m_stops").df()
+    stops = con.execute("SELECT stop_id, lat, lon, feed_id FROM m_stops").df()
     generated = walking_transfers(stops, params.transfers)
+    added_by_stations = 0
+    if params.stations is not None and station_feeds:
+        links = station_transfers(stops, stops["feed_id"].isin(station_feeds).to_numpy(), params.stations,
+                                  params.transfers)
+        before = len(generated)
+        generated = (pd.concat([generated, links], ignore_index=True)
+                     .groupby(["from_stop_id", "to_stop_id"], as_index=False, sort=False)["min_transfer_time"].min())
+        added_by_stations = len(generated) - before
     con.register("generated_df", generated)
     # A feed's transfer without a time is a plain "you may change here": give it the walk
     # time if the stops are near each other, else 0 as the pipeline would.
@@ -299,7 +353,7 @@ def _transfers(con, params: MergeParams) -> tuple[int, int]:
         SELECT from_stop_id, to_stop_id, 2 AS transfer_type, min(min_transfer_time) AS min_transfer_time
         FROM all_transfers GROUP BY from_stop_id, to_stop_id""")
     con.unregister("generated_df")
-    return from_feeds, len(generated)
+    return from_feeds, len(generated) - added_by_stations, added_by_stations
 
 
 def _export(con, work_dir: Path, tier: Tier) -> None:

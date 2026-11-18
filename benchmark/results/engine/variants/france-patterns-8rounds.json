@@ -1,0 +1,319 @@
+{
+ "tier": "france-patterns",
+ "status": "ok",
+ "failedDuring": null,
+ "error": null,
+ "engineVersion": "2.2.0",
+ "java": "21.0.7+6-LTS",
+ "maxHeapMb": 12288,
+ "files": {
+  "stopsBytes": 29465244,
+  "routesBytes": 49325490
+ },
+ "network": {
+  "stops": 293369,
+  "routes": 72641,
+  "trips": 480669,
+  "stopTimes": 10447383,
+  "transfers": 1143341,
+  "implicitTransferPairs": 318110,
+  "largestNameGroup": 23
+ },
+ "load": {
+  "coldReadMs": 72.1122,
+  "coldBuildMs": 499.4743,
+  "warmBuildMs": [
+   620.2724,
+   337.8896,
+   326.771,
+   316.0328,
+   260.4335
+  ],
+  "warmBuildMedianMs": 326.771
+ },
+ "heap": {
+  "retainedMb": 253.99673461914062,
+  "peakMb": 1016.2053756713867
+ },
+ "querySets": [
+  {
+   "name": "random",
+   "direction": "forward",
+   "queries": 1000,
+   "found": 154,
+   "latencyMs": {
+    "mean": 18.869698300000003,
+    "p50": 11.4412,
+    "p90": 45.4701,
+    "p95": 56.0939,
+    "p99": 68.7309,
+    "max": 112.5669
+   },
+   "medianDurationMin": 453.0,
+   "medianTransitLegs": 6.0,
+   "note": null
+  },
+  {
+   "name": "random",
+   "direction": "arrive_by",
+   "queries": 1000,
+   "found": 9,
+   "latencyMs": {
+    "mean": 24.344073200000004,
+    "p50": 18.1036,
+    "p90": 51.5912,
+    "p95": 62.9918,
+    "p99": 77.5774,
+    "max": 175.9222
+   },
+   "medianDurationMin": 73.0,
+   "medianTransitLegs": 4.0,
+   "note": null
+  },
+  {
+   "name": "lyon-local",
+   "direction": "forward",
+   "queries": 300,
+   "found": 290,
+   "latencyMs": {
+    "mean": 5.302363999999998,
+    "p50": 4.6773,
+    "p90": 7.2509,
+    "p95": 8.2045,
+    "p99": 15.4932,
+    "max": 70.1411
+   },
+   "medianDurationMin": 33.0,
+   "medianTransitLegs": 3.0,
+   "note": null
+  },
+  {
+   "name": "lyon-local",
+   "direction": "arrive_by",
+   "queries": 300,
+   "found": 290,
+   "latencyMs": {
+    "mean": 15.569428333333335,
+    "p50": 12.5489,
+    "p90": 18.3654,
+    "p95": 21.699,
+    "p99": 114.7835,
+    "max": 152.6074
+   },
+   "medianDurationMin": 29.166666666666668,
+   "medianTransitLegs": 3.0,
+   "note": null
+  },
+  {
+   "name": "paris-local",
+   "direction": "forward",
+   "queries": 300,
+   "found": 297,
+   "latencyMs": {
+    "mean": 8.95021833333333,
+    "p50": 8.2691,
+    "p90": 12.5854,
+    "p95": 13.9836,
+    "p99": 18.7329,
+    "max": 70.8075
+   },
+   "medianDurationMin": 35.0,
+   "medianTransitLegs": 3.0,
+   "note": null
+  },
+  {
+   "name": "paris-local",
+   "direction": "arrive_by",
+   "queries": 300,
+   "found": 297,
+   "latencyMs": {
+    "mean": 23.176311333333334,
+    "p50": 20.124,
+    "p90": 32.2044,
+    "p95": 38.4363,
+    "p99": 115.496,
+    "max": 139.8286
+   },
+   "medianDurationMin": 32.0,
+   "medianTransitLegs": 3.0,
+   "note": null
+  }
+ ],
+ "scenarios": [
+  {
+   "name": "Bellecour -> Part-Dieu",
+   "kind": "intra-metropole",
+   "originStops": 16,
+   "destinationStops": 24,
+   "departure": "08:00",
+   "found": true,
+   "latencyMs": 3.8501,
+   "arrival": "08:10",
+   "durationMin": 10,
+   "transitLegs": 2,
+   "routes": [
+    "D",
+    "B"
+   ],
+   "note": null
+  },
+  {
+   "name": "Chatelet -> La Defense",
+   "kind": "intra-metropole",
+   "originStops": 26,
+   "destinationStops": 16,
+   "departure": "08:00",
+   "found": true,
+   "latencyMs": 4.9491,
+   "arrival": "08:18",
+   "durationMin": 18,
+   "transitLegs": 2,
+   "routes": [
+    "4",
+    "A"
+   ],
+   "note": null
+  },
+  {
+   "name": "Gare du Nord -> Montparnasse",
+   "kind": "intra-metropole",
+   "originStops": 21,
+   "destinationStops": 17,
+   "departure": "08:00",
+   "found": true,
+   "latencyMs": 5.8435,
+   "arrival": "08:19",
+   "durationMin": 19,
+   "transitLegs": 2,
+   "routes": [
+    "B",
+    "6"
+   ],
+   "note": null
+  },
+  {
+   "name": "Vieux-Port -> Aix-en-Provence",
+   "kind": "intra-metropole",
+   "originStops": 23,
+   "destinationStops": 13,
+   "departure": "08:00",
+   "found": true,
+   "latencyMs": 6.8306,
+   "arrival": "08:53",
+   "durationMin": 53,
+   "transitLegs": 2,
+   "routes": [
+    "M1",
+    "C2"
+   ],
+   "note": null
+  },
+  {
+   "name": "Lyon Part-Dieu -> Grenoble",
+   "kind": "intra-region",
+   "originStops": 28,
+   "destinationStops": 17,
+   "departure": "08:00",
+   "found": true,
+   "latencyMs": 7.7643,
+   "arrival": "09:39",
+   "durationMin": 99,
+   "transitLegs": 1,
+   "routes": [
+    "K6"
+   ],
+   "note": null
+  },
+  {
+   "name": "Toulouse -> Montpellier",
+   "kind": "intra-region",
+   "originStops": 20,
+   "destinationStops": 15,
+   "departure": "08:00",
+   "found": true,
+   "latencyMs": 7.4879,
+   "arrival": "11:08",
+   "durationMin": 188,
+   "transitLegs": 2,
+   "routes": [
+    "C3",
+    "K8"
+   ],
+   "note": null
+  },
+  {
+   "name": "Lyon Part-Dieu -> Paris Gare de Lyon",
+   "kind": "long-distance",
+   "originStops": 28,
+   "destinationStops": 26,
+   "departure": "07:00",
+   "found": true,
+   "latencyMs": 30.5249,
+   "arrival": "15:27",
+   "durationMin": 507,
+   "transitLegs": 3,
+   "routes": [
+    "K7",
+    "P5",
+    "P25"
+   ],
+   "note": null
+  },
+  {
+   "name": "Brest -> Strasbourg",
+   "kind": "long-distance",
+   "originStops": 7,
+   "destinationStops": 13,
+   "departure": "07:00",
+   "found": true,
+   "latencyMs": 44.288,
+   "arrival": "21:19",
+   "durationMin": 859,
+   "transitLegs": 7,
+   "routes": [
+    "P7",
+    "K14",
+    "K15",
+    "K3",
+    "6",
+    "4",
+    "K1"
+   ],
+   "note": null
+  },
+  {
+   "name": "Lille Flandres -> Marseille St-Charles",
+   "kind": "long-distance",
+   "originStops": 23,
+   "destinationStops": 25,
+   "departure": "07:00",
+   "found": false,
+   "latencyMs": 56.9664,
+   "arrival": null,
+   "durationMin": null,
+   "transitLegs": null,
+   "routes": [],
+   "note": "no journey within 8 rounds"
+  },
+  {
+   "name": "Bordeaux St-Jean -> Nice-Ville",
+   "kind": "long-distance",
+   "originStops": 15,
+   "destinationStops": 12,
+   "departure": "07:00",
+   "found": false,
+   "latencyMs": 60.3335,
+   "arrival": null,
+   "durationMin": null,
+   "transitLegs": null,
+   "routes": [],
+   "note": "no journey within 8 rounds"
+  }
+ ],
+ "process": {
+  "xmx": "12g",
+  "exit_code": 0,
+  "seconds": 71.9,
+  "peak_working_set_mb": 1382
+ }
+}

@@ -41,8 +41,8 @@ There are two data layers:
 | 4 | Notebook running the whole chain | `notebooks/gtfs_france.ipynb` | done |
 | 5 | Pipeline conversion, measured | `gtfs_bench/convert.py` | done |
 | 6 | Engine harness (`:benchmark-engine`) | `engine/` + `gtfs_bench/engine.py` | done |
-| 7 | Report | [`RESULTS.md`](RESULTS.md) | in review |
-| 8 | Long-distance layer, connected France | catalogue + `gtfs_bench/connectivity.py` | |
+| 7 | Report | [`RESULTS.md`](RESULTS.md) | done |
+| 8 | Long-distance layer, connected France | catalogue + `gtfs_bench/connected.py`, `connectivity.py` | in review |
 
 ## Setup
 
@@ -69,7 +69,9 @@ python -m venv .venv
 9. checks;
 10. conversion of every tier by the pipeline;
 11. raptor-kmp on every tier, and the heap sweep;
-12. optionally, France with the producers' stop names (`gtfs_bench/variants.py`).
+12. optionally, France with the producers' stop names (`gtfs_bench/variants.py`);
+13. France connexe: the long-distance layer, measured against the regional France
+    (`gtfs_bench/connected.py`, see below).
 
 **Building the pipeline needs JDK 21.** Kotlin 2.1.0 cannot parse Java 25's version string,
 so `./gradlew` fails with an internal compiler error when the Gradle daemon runs on JDK 25.
@@ -100,6 +102,9 @@ The notebook is committed without outputs. What it measures lands in `results/`:
 | `engine_heap.csv` | whether Lyon, AURA, Île-de-France and France load and route under -Xmx 256 MB to 4 GB |
 | `engine_local_trips.png`, `engine_heap.png`, `engine_latency.png` | the engine figures |
 | `engine_same_name_links.csv` | France with and without the merge's renaming of homonym stops |
+| `connected_france.csv`, `connected_scenarios.csv`, `engine/variants/` | France juxtaposée, split per stop sequence, and connexe: pipeline, engine at 5 and 8 rounds, heap checks |
+| `connectivity_islands.csv` | the pieces of each network that the rest cannot reach, and why |
+| `reachability_prefectures.csv`, `reachability.png` | Paris → every préfecture by raptor-kmp, per network |
 
 **The reference day** is the Tuesday, outside school holidays, that the most feeds run
 on, then the one with the most trips. It is computed from the downloaded calendars over
@@ -145,6 +150,35 @@ python -m gtfs_bench.engine --tiers france --no-sweep
 These are desktop JVM numbers (JDK 21, Core Ultra 5 135H). A phone runs ART on a slower
 core: the heap figures carry over, the times do not.
 
+## France connexe (step 8)
+
+```bash
+python -m gtfs_bench.connected                  # ~20 min: two France merges and conversions
+python -m gtfs_bench.connected --skip-build     # re-time and re-audit what is converted
+```
+
+Two variants of the France tier, each changing one thing, merged into
+`data/merged/variants/france/` and converted to `data/raptor/<variant>/`:
+
+- **`france-patterns`:** the regional feeds, with every route split into one route per
+  stop sequence (`MergeParams.split_patterns`). The pipeline keeps one sequence per route
+  and direction and drops the trips that skip one of its stops; split, it keeps them all.
+- **`france-connexe`:** the same, plus the catalogue's `longue_distance` rows and wider
+  links around the stations of national networks (`MergeParams.stations`: 500 m and 60
+  neighbours from a station's stops, and every pair of SNCF stops sharing a UIC code).
+
+Each one, and the regional France as it is, then gets:
+
+- the engine harness at 5 rounds (the default) and at 8, and heap checks at 384m, 512m
+  and 1g;
+- a **connectivity audit** (`gtfs_bench/connectivity.py`): connected components of the
+  reference day's graph (rides between consecutive stops, transfers), and the islands left
+  with the distance to the main network as a hint of why;
+- **Paris → every préfecture**: raptor-kmp from Châtelet at 07:00, 8 rounds, to the stops
+  near each préfecture's town hall (geo.api.gouv.fr, cached in `data/geo/`).
+
+The explorer opens any of them: `python -m gtfs_bench.explorer --tier france-connexe`.
+
 ## Explorer: try the engine yourself
 
 `python -m gtfs_bench.explorer` opens a terminal app on top of the real engine. raptor-kmp
@@ -184,8 +218,8 @@ It needs the tier converted (the notebook) and `:benchmark-engine:installDist`.
   a spinner too, with their time once past a quarter of a second.
 - **First run:** naming the commune of each place takes a few more seconds, once, and is
   then cached in `data/tmp/explorer/`.
-- **Coverage:** until step 8, there are no TGV or Intercités, so long trips across France
-  find nothing or a chain of TER.
+- **Coverage:** the France tier has no TGV or Intercités, so long trips across France
+  find nothing or a chain of TER. `--tier france-connexe` has them (step 8).
 
 ## Credentials
 

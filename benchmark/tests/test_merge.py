@@ -18,7 +18,7 @@ from gtfs_bench import merge as merge_module
 from gtfs_bench.merge import MergeParams, Tier, merge_tier, tiers_from_catalog
 from gtfs_bench.names import disambiguate, implicit_transfer_pairs, name_key
 from gtfs_bench.normalize import Window, connect, is_current, normalize_feed
-from gtfs_bench.transfers import TransferParams, walking_transfers
+from gtfs_bench.transfers import StationParams, TransferParams, station_transfers, walking_transfers
 
 WEEK = Window.week_of(dt.date(2026, 12, 1))          # Mon 30 Nov – Sun 6 Dec 2026
 MAINLAND = shapely.box(-5.0, 41.0, 6.0, 51.5)        # leaves Geneva (6.14 E) out
@@ -81,7 +81,7 @@ ROWS = {
     "agg": dict(feed_id="agg", include=True, layer="regional", region_code="84", region_name="AURA", metropole="",
                 priority="30", clip=False, keep_agencies="", drop_agencies="^(Network Y)$", keep_stop_ids="", drop_stop_ids=""),
     "nat": dict(feed_id="nat", include=True, layer="regional", region_code="FR", region_name="National", metropole="",
-                priority="15", clip=True, keep_agencies="", drop_agencies="",
+                level="national", priority="15", clip=True, keep_agencies="", drop_agencies="",
                 keep_stop_ids="^StopPoint:OCE(Train TER|Car TER|TramTrain|Navette)-", drop_stop_ids=""),
 }
 
@@ -110,10 +110,14 @@ def built(tmp_path_factory):
                             commune_lookup=fake_communes, progress=lambda s: None)
         metro = merge_tier(Tier("metropole:lyon", "metropole", "Lyon", (ROWS["urb"],)), MergeParams(), normalized, merged,
                            commune_lookup=fake_communes, progress=lambda s: None)
+        split = merge_tier(tier, MergeParams(reference_date=dt.date(2026, 12, 1), split_patterns=True,
+                                             stations=StationParams()),
+                           normalized, root / "merged-split", commune_lookup=fake_communes, progress=lambda s: None)
     finally:
         merge_module._area = original_area
-    return dict(root=root, reports=reports, region=region, metro=metro,
-                region_zip=merged / "region" / "region-84.zip", metro_zip=merged / "metropole" / "metropole-lyon.zip")
+    return dict(root=root, reports=reports, region=region, metro=metro, split=split,
+                region_zip=merged / "region" / "region-84.zip", metro_zip=merged / "metropole" / "metropole-lyon.zip",
+                split_zip=root / "merged-split" / "region" / "region-84.zip")
 
 
 def read(zip_path, name):
@@ -246,6 +250,63 @@ def test_pattern_overlaps_finds_the_network_carried_twice(built):
     overlaps = pattern_overlaps(["urb", "agg", "nat"], built["root"] / "normalized", min_shared=1)
     pairs = {(r.feed_a, r.feed_b): r.shared_patterns for r in overlaps.itertuples()}
     assert pairs == {("agg", "urb"): 1}   # T1's stop sequence; times play no part
+
+
+def test_split_patterns_gives_each_stop_sequence_its_route(built):
+    def patterns(zip_path):
+        sequences = {}
+        for row in sorted(read(zip_path, "stop_times"), key=lambda r: (r["trip_id"], int(r["stop_sequence"]))):
+            sequences.setdefault(row["trip_id"], []).append(row["stop_id"])
+        by_route = {}
+        for trip in read(zip_path, "trips"):
+            by_route.setdefault((trip["route_id"], trip["direction_id"]), set()).add(tuple(sequences[trip["trip_id"]]))
+        return by_route
+
+    before, after = patterns(built["region_zip"]), patterns(built["split_zip"])
+    assert any(len(p) > 1 for p in before.values())          # urb:R1 and nat:TER run several sequences
+    assert all(len(p) == 1 for p in after.values())          # one per route once split
+    assert sum(len(p) for p in before.values()) == len(after)
+    assert built["split"].routes_from_split == len(after) - len(before)
+    assert built["split"].trips == built["region"].trips and built["split"].integrity_problems == []
+    routes = {r["route_id"]: r["route_short_name"] for r in read(built["split_zip"], "routes")}
+    assert routes["urb:R1~2"] == routes["urb:R1"] == "1"      # the copies read like the line
+
+
+def test_station_links_reach_further_and_follow_uic_codes():
+    stops = pd.DataFrame({
+        "stop_id": ["StopPoint:OCETGV INOUI-87686006", "StopPoint:OCECar TER-87686006", "metro", "bus", "far"],
+        "lat": [48.8443, 48.8530, 48.8483, 48.8443, 48.8500],   # car stop 970 m away, metro 450 m, far 630 m
+        "lon": [2.3730, 2.3730, 2.3730, 2.3790, 2.3730],
+    })
+    station = [True, True, False, False, False]
+    out = station_transfers(stops, station, StationParams(radius_m=500, max_neighbors=10),
+                            TransferParams(walk_speed_mps=1.0, floor_s=60))
+    pairs = {(r.from_stop_id, r.to_stop_id): r.min_transfer_time for r in out.itertuples()}
+    tgv, car = "StopPoint:OCETGV INOUI-87686006", "StopPoint:OCECar TER-87686006"
+    assert (tgv, "metro") in pairs and ("metro", tgv) in pairs    # 450 m: within the station radius
+    assert 440 <= pairs[(tgv, "metro")] <= 460
+    assert (tgv, car) in pairs and (car, tgv) in pairs            # 970 m, same UIC code
+    assert (tgv, "far") not in pairs                              # 630 m, no code in common
+    assert ("metro", "bus") not in pairs                          # neither is a station stop
+
+
+def test_connectivity_audit_finds_the_islands(monkeypatch):
+    from gtfs_bench import connectivity
+
+    monkeypatch.setattr(connectivity.geo, "regions", lambda: {"84": AURA})
+    monkeypatch.setattr(connectivity, "_region_names", lambda: {"84": "AURA"})
+    # Main network a–b–c (a ride, a ride back, a walk), an island d–e 400 m from c, f alone 50 km away with g.
+    stops = pd.DataFrame({"stop_id": list("abcdefg"), "stop_name": list("ABCDEFG"),
+                          "lat": [45.0, 45.01, 45.02, 45.0236, 45.03, 45.5, 45.501], "lon": [4.0] * 7,
+                          "feed_id": ["x"] * 3 + ["y"] * 2 + ["z"] * 2})
+    sources, targets = [0, 1, 1, 3, 5], [1, 0, 2, 4, 6]
+    result, frame = connectivity.audit(None, dt.date(2026, 12, 1), "test",
+                                       graph=(stops, pd.Series(sources).to_numpy(), pd.Series(targets).to_numpy(), 4))
+    assert result.active_stops == 7 and result.weak_components == 3 and result.giant_weak_stops == 3
+    assert result.giant_strong_stops == 2                  # a⇄b; c is reached but has no way back
+    islands = {i["feed"]: i for i in result.islands}
+    assert islands["y"]["likely_cause"] == "missing link" and 380 <= islands["y"]["gap_to_main_m"] <= 420
+    assert islands["z"]["likely_cause"] == "no link at all" and islands["z"]["region"] == "AURA"
 
 
 def test_tiers_from_catalog():

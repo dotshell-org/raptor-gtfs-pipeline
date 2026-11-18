@@ -197,3 +197,51 @@ def tiers_chart(stats: pd.DataFrame, path: Path, labelled: dict[str, str] | None
     fig.savefig(path, dpi=150, bbox_inches="tight", facecolor=SURFACE)
     plt.close(fig)
     return path
+
+
+#: Travel-time classes for the reachability map: one blue, light (quick) to dark (long).
+REACH_BINS = ((180, "under 3 h", "#a7c6ee"), (360, "3–6 h", "#78a7e4"), (540, "6–9 h", "#4a87d8"),
+              (720, "9–12 h", "#2a5fa8"), (float("inf"), "over 12 h", "#173a6b"))
+
+
+def reachability_map(reach: pd.DataFrame, outlines: list, titles: dict[str, str], day: dt.date, path: Path) -> Path:
+    """Préfectures by travel time from Paris, one small map per network, side by side.
+
+    `reach` has columns network, lat, lon, found, duration_min (connectivity.reachability).
+    `outlines` is a list of (lons, lats) rings for the background; `titles` maps each network
+    to its panel title, in panel order. Unreached préfectures are crosses: no shade for them.
+    """
+    networks = list(titles)
+    fig, axes = plt.subplots(1, len(networks), figsize=(4.6 * len(networks), 5.2), facecolor=SURFACE)
+    axes = list(axes) if len(networks) > 1 else [axes]
+    for ax, network in zip(axes, networks):
+        ax.set_facecolor(SURFACE)
+        ax.set_aspect(1 / 0.67)  # degrees of longitude are ~0.67 of latitude's at 47° N
+        ax.axis("off")
+        for lons, lats in outlines:
+            ax.plot(lons, lats, color=AXIS, linewidth=0.6, zorder=1)
+        part = reach[reach["network"] == network]
+        reached = part[part["found"]]
+        lower = 0
+        for upper, label, colour in REACH_BINS:
+            group = reached[(reached["duration_min"] > lower) & (reached["duration_min"] <= upper)]
+            ax.scatter(group["lon"], group["lat"], s=34, color=colour, edgecolor=SURFACE, linewidth=1.2, zorder=3,
+                       label=label)
+            lower = upper
+        missed = part[~part["found"]]
+        ax.scatter(missed["lon"], missed["lat"], s=22, marker="x", color=INK_SECONDARY, linewidth=1.1, zorder=3,
+                   label="not reached that day")
+        median = reached["duration_min"].median()
+        ax.set_title(f"{titles[network]}\n{len(reached)}/{len(part)} reached"
+                     + (f" · median {median / 60:.1f} h" if len(reached) else ""),
+                     loc="left", fontsize=9.5, color=INK, pad=6)
+    handles, labels = axes[-1].get_legend_handles_labels()
+    legend = fig.legend(handles, labels, frameon=False, loc="lower center", ncol=len(labels), fontsize=8.5,
+                        bbox_to_anchor=(0.5, 0.06))
+    for text in legend.get_texts():
+        text.set_color(INK_SECONDARY)
+    fig.suptitle(f"From Paris (Châtelet) at 07:00 to every préfecture, {day:%A %d %B %Y}, by raptor-kmp",
+                 x=0.02, ha="left", fontsize=10.5, color=INK)
+    fig.savefig(path, dpi=150, bbox_inches="tight", facecolor=SURFACE)
+    plt.close(fig)
+    return path

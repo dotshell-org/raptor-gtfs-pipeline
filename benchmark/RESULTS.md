@@ -1,11 +1,16 @@
 # Can raptor-kmp route over all of France?
 
-**Yes, on the regional layer, with conditions.** On a GTFS of mainland France, the engine
-loads in under half a second, holds 229 MB of heap, and answers a city trip in 4–7 ms
-(median, desktop JVM). That meets every criterion set before the benchmark, for a phone
-and for a server.
+**Yes for a server. For a phone, yes on memory and loading, not yet on its slowest
+queries.** Step 8 built a France in one piece: every regional network, plus TGV, OUIGO,
+Intercités, international trains, coaches and the Corsica ferries, with every trip the day
+runs. raptor-kmp loads it in 0.57 s, holds 257 MB of heap, reaches all 95 préfectures from
+Paris within the day, and answers a city trip in 5–8 ms (median, desktop JVM). Every
+server criterion passes. On a phone, heap and load pass; the 30 ms p95 does not for
+cross-country and arrive-by queries (40–46 ms).
 
-Three conditions come with that answer:
+![From Paris to every préfecture](results/reachability.png)
+
+Four conditions come with that answer:
 
 1. **Stops sharing a name must not be linked across France.** raptor-kmp links every
    pair of same-name stops with a 120 s transfer. With the producers' names, that is 15.8
@@ -14,26 +19,34 @@ Three conditions come with that answer:
    trips "teleport" between towns that each have a "Gare" or a "Mairie". The merge renames
    homonyms by place; the engine should stop needing it.
 2. **A phone needs a large heap.** France loads at -Xmx384m but not at -Xmx256m, which is
-   what many Android phones give an app without `android:largeHeap`.
-3. **This is France without TGV, OUIGO or Intercités** (step 8). Regions are joined only
-   by TER, so long trips are either missing or slow chains of regional trains. Adding the
-   long-distance layer will make the graph connected and queries explore further. These
-   numbers are a floor.
+   what many Android phones give an app without `android:largeHeap`. The connected France
+   still fits in 384 MB.
+3. **The pipeline must keep every trip.** It keeps one stop sequence per route and
+   direction and drops the trips that skip one of its stops: 17 % of the day's trips on
+   France, express TER first. The merge now gives each stop sequence its own route, which
+   keeps 99.9 % of them. On its own, that takes the regional France from 68 to 88
+   préfectures reachable from Paris in a day.
+4. **A connected network costs more per query.** A random trip's p95 goes from 11.5 ms
+   (regional France) to 40 ms (connected), because far more pairs now have an answer to
+   search for. Eight rounds instead of five double it again and find no long trip that
+   five did not. raptor-kmp's per-query reset (see [Speed](#speed)) is the first thing
+   to fix for phones.
 
 ![Same trips, bigger network](results/engine_local_trips.png)
 
 ## Verdict against the criteria
 
-The criteria were fixed in the plan before measuring. Desktop JVM, France, regional layer:
+The criteria were fixed in the plan before measuring. Desktop JVM, default 5 rounds, the
+worst query set of each network (random, Lyon and Paris trips, forward and arrive-by):
 
-| Target | Criterion | Measured | |
-|---|---|---|---|
-| Phone | heap ≤ 512 MB | loads at 384 MB (out of memory at 256 MB); holds 229 MB | ✅ with `largeHeap` |
-| Phone | load ≤ 3 s on desktop (≈ 10 s on a phone, ×3 estimated) | 0.44 s | ✅ |
-| Phone | p95 ≤ 30 ms on desktop | worst p95 23.3 ms (Paris trips, arrive-by) | ✅ |
-| Server | heap ≤ 4 GB | 229 MB | ✅ |
-| Server | p95 ≤ 50 ms | 23.3 ms | ✅ |
-| Server | p99 ≤ 200 ms | 91.4 ms (Paris trips, arrive-by) | ✅ |
+| Target | Criterion | Regional France (step 7) | | France connexe (step 8) | |
+|---|---|---|---|---|---|
+| Phone | heap ≤ 512 MB | loads at 384 MB (out of memory at 256 MB); holds 229 MB | ✅ with `largeHeap` | loads at 384 MB; holds 257 MB | ✅ with `largeHeap` |
+| Phone | load ≤ 3 s on desktop (≈ 10 s on a phone, ×3 estimated) | 0.44 s | ✅ | 0.57 s | ✅ |
+| Phone | p95 ≤ 30 ms on desktop | 23.3 ms (Paris trips, arrive-by) | ✅ | 45.6 ms (random, arrive-by); city trips forward 11.6–15.6 ms | ❌ |
+| Server | heap ≤ 4 GB | 229 MB | ✅ | 257 MB | ✅ |
+| Server | p95 ≤ 50 ms | 23.3 ms | ✅ | 45.6 ms | ✅ |
+| Server | p99 ≤ 200 ms | 91.4 ms (Paris trips, arrive-by) | ✅ | 115.4 ms (Lyon trips, arrive-by) | ✅ |
 
 The same France **with the producers' stop names fails all three latency criteria**:
 p95 up to 562 ms and p99 up to 836 ms, with wrong itineraries (see
@@ -45,6 +58,8 @@ p95 up to 562 ms and p99 up to 836 ms, with wrong itineraries (see
   urban, interurban, regional aggregates and TER from the national SNCF feed. They were
   downloaded on 18 November 2026; every version is in
   [`results/feeds_used.csv`](results/feeds_used.csv).
+- **Step 8 data:** the 10 long-distance rows of the catalogue, downloaded on 19 November
+  2026. The SNCF zip is the same version as the TER's.
 - **Reference day:** Tuesday 24 November 2026, chosen from the calendars as the school
   Tuesday the most feeds run on (220 of 225).
 - **Merge:** the merge keeps that day's week; the pipeline converts the day alone.
@@ -66,7 +81,142 @@ Query sets:
 **Cross-check:** on Lyon, a random forward query takes 0.46 ms on average here.
 raptor-kmp's README gives 0.35 ms on average, on an older, larger TCL export.
 
+## France connexe (step 8)
+
+Three networks, each adding one thing to the one before
+([`results/connected_france.csv`](results/connected_france.csv), built by
+`gtfs_bench/connected.py`):
+
+| Network | What it is | Feeds | Trips of the day the pipeline keeps |
+|---|---|---:|---:|
+| **France juxtaposée** | the France tier of steps 3–7: the regions side by side, joined by TER and walks | 225 | 397 477 / 481 003 (83 %) |
+| **+ one route per stop sequence** | the same feeds; the merge gives every stop sequence its own route | 225 | 480 669 / 481 003 (99.9 %) |
+| **France connexe** | + the long-distance layer and wider links around stations | 235 | 481 983 / 482 319 (99.9 %) |
+
+- **One route per stop sequence.** The pipeline keeps the most common stop sequence of
+  each route and direction and drops every trip that skips one of its stops. RAPTOR's
+  routes are stop sequences anyway, so the merge splits each route into one route per
+  sequence (`MergeParams.split_patterns`). The routes the engine loads double, from 35 453
+  to 72 641, and no trip is lost. Nothing changes in the pipeline.
+- **The long-distance layer** that day is 1 324 trips: 862 SNCF (538 TGV INOUI, 120
+  coaches "à réservation", 71 OUIGO, 72 Intercités, 34 Lyria, 26 ICE), 323 FlixBus, 100
+  BlaBlaCar Bus, 26 Trenitalia, 8 Renfe and 5 Corsica Linea crossings. Eurostar and the
+  Channel ferries add nothing that day, as each of their trips has a single French stop;
+  Corsica Ferries sails only to Italy that week ([`catalog/README.md`](catalog/README.md)).
+- **Station links.** From every stop of a national feed, walking links reach 500 m and the
+  60 closest stops, instead of 300 m and 30. SNCF stops sharing a UIC code are linked
+  whatever their coordinates. That adds 36 092 links to the 1.15 M walking transfers.
+
+### One piece?
+
+The day's graph: a stop is a node, and a ride between two consecutive stops or a transfer
+is an edge ([`results/connectivity_islands.csv`](results/connectivity_islands.csv)).
+
+| | Juxtaposée | One route per sequence | Connexe |
+|---|---:|---:|---:|
+| Stops served that day | 289 258 | 289 258 | 289 870 |
+| In the largest component, ignoring direction | 99.71 % | 99.71 % | 99.93 % |
+| In the largest component, both ways | 99.56 % | 99.56 % | 99.62 % |
+| Other pieces of 10 stops or more | 8 | 8 | 6 |
+
+The regional France was already one piece: TER lines cross every regional border. What
+it lacked was time, not links. The only large piece apart was Corsica (about 630 stops),
+which Corsica Linea joins. Six small networks remain apart, 0.07 % of the stops:
+
+- **Missing links:** Pionsat coaches, 312 m from Pionsat's station stop; La Hague, 382 m.
+  These sit just past the 300 m walking radius.
+- **No link at all:** a few school and rural networks with no walkable link to the rest:
+  Bourbonne-les-Bains (2.4 km), Ploemeur (6.7 km), Le Bignon-Mirabeau (1.5 km).
+- **Across a border:** the Pays de Gex (34 stops), whose link is Geneva's network,
+  outside the map.
+
+### From Paris to every préfecture
+
+raptor-kmp searches from the stops within 300 m of Châtelet at 07:00 to the stops within
+800 m of each préfecture's town hall, with 8 rounds
+([`results/reachability_prefectures.csv`](results/reachability_prefectures.csv), map at
+the top of this report):
+
+| | Juxtaposée | One route per sequence | Connexe |
+|---|---:|---:|---:|
+| Préfectures reached that day | 68 / 95 | 88 / 95 | **95 / 95** |
+| Median, door to door | 8 h 53 | 6 h 29 | **3 h 40** |
+| Median changes | 4 | 3 | 2 |
+| Search time, median / max | 37 / 51 ms | 54 / 150 ms | 47 / 100 ms |
+| Lyon | 11 h 04 | 5 h 56 | 2 h 34 |
+| Lille | 6 h 38 | 3 h 07 | 1 h 48 |
+| Strasbourg | 13 h 47 | 5 h 52 | 2 h 14 |
+| Rennes | 9 h 04 | 7 h 32 | 2 h 28 |
+| Bordeaux | — | 8 h 50 | 3 h 29 |
+| Marseille | — | 11 h 52 | 4 h 02 |
+| Toulouse | — | 14 h 47 | 6 h 44 |
+| Nice | — | 15 h 00 | 7 h 18 |
+| Ajaccio, Bastia | — | — | overnight ferry, 07:00 the next day |
+
+Times include waiting for the first train after 07:00. On the connected France, the
+slowest préfectures are rural ones of the Massif Central and Gers (Auch 8 h 56, Rodez
+8 h 51, Aurillac 8 h 41).
+
+### Named long trips
+
+At the default 5 rounds ([`results/connected_scenarios.csv`](results/connected_scenarios.csv)):
+
+| Trip, from 07:00 | Juxtaposée | One route per sequence | Connexe | Query (connexe) |
+|---|---|---|---|---:|
+| Lyon Part-Dieu → Paris Gare de Lyon | 10 h 30, 4 rides | 8 h 27, 3 rides | **2 h 02, direct TGV** | 10.3 ms |
+| Lille Flandres → Marseille St-Charles | none | none | **5 h 14, 3 rides** | 37.2 ms |
+| Brest → Strasbourg | none | none (14 h 19 at 8 rounds) | **7 h 30, 4 rides** | 34.8 ms |
+| Bordeaux St-Jean → Nice-Ville | none | none | **9 h 06, 3 rides** | 62.7 ms |
+
+The six city and regional trips are found on all three networks. Two Paris trips get
+faster once the trips the pipeline used to drop are kept: Châtelet → La Défense with RER A
+(18 instead of 21 min), Gare du Nord → Montparnasse with RER B (19 instead of 20 min).
+
+### What it costs the engine
+
+| | Juxtaposée | One route per sequence | Connexe |
+|---|---:|---:|---:|
+| Routes / trips loaded | 35 453 / 397 477 | 72 641 / 480 669 | 73 493 / 481 983 |
+| Transfers | 1 143 341 | 1 143 341 | 1 195 975 |
+| `.bin` | 64.2 MB | 75.1 MB | 75.7 MB |
+| Load, cold | 436 ms | 563 ms | 571 ms |
+| Heap held | 229 MB | 254 MB | 257 MB |
+| Fits -Xmx384m / 512m / 1g | yes / yes / yes | yes / yes / yes | yes / yes / yes |
+| Random pairs joined, 5 rounds | 51 / 1 000 | 78 / 1 000 | 183 / 1 000 |
+| Random, forward p50 / p95 / p99 | 4.0 / 11.5 / 14.6 ms | 5.8 / 20.7 / 27.4 ms | 10.7 / 40.4 / 54.7 ms |
+| Random, arrive-by p50 / p95 / p99 | 6.2 / 15.0 / 18.4 ms | 8.8 / 26.1 / 34.4 ms | 15.2 / 45.6 / 63.8 ms |
+| Lyon trips, forward | 4.2 / 6.3 / 9.5 ms | 4.7 / 7.8 / 13.5 ms | 5.0 / 11.6 / 25.8 ms |
+| Lyon trips, arrive-by | 10.9 / 16.9 / 65.5 ms | 12.6 / 23.7 / 88.8 ms | 12.7 / 28.0 / 115.4 ms |
+| Paris trips, forward | 6.5 / 9.9 / 12.8 ms | 8.2 / 14.6 / 18.4 ms | 7.9 / 15.6 / 22.2 ms |
+| Paris trips, arrive-by | 16.0 / 23.3 / 91.4 ms | 20.4 / 35.9 / 110.2 ms | 20.0 / 42.9 / 110.6 ms |
+| **8 rounds:** random pairs joined | 98 / 1 000 | 154 / 1 000 | 306 / 1 000 |
+| **8 rounds:** random, forward p50 / p95 / p99 | 6.6 / 27.9 / 34.3 ms | 11.4 / 56.1 / 68.7 ms | 24.3 / 94.3 / 113.4 ms |
+
+- **Memory hardly moves.** Twice the routes and the long-distance layer add 28 MB of heap
+  and 0.13 s of loading. The connected France fits where the regional one did.
+- **City trips pay a little.** The median of a Lyon or Paris trip moves by under 1.5 ms
+  forward and 2–4 ms arrive-by; the tails grow more, as TGV and TER now serve the city
+  stations.
+- **Cross-country queries pay more.** A random pair is joined 3.6 times as often, and an
+  answer takes longer to settle than a give-up: the random p95 goes from 11.5 to 40 ms.
+- **Eight rounds are not worth it by default.** They double the random p95 again and find
+  every long trip that five already found.
+
+### The pipeline
+
+| | Juxtaposée | One route per sequence | Connexe |
+|---|---:|---:|---:|
+| Merge | 112 s | 93 s | 132 s |
+| Pipeline | 136 s | 143 s | 157 s |
+| Pipeline peak memory | 9.5 GB | 9.1 GB | 9.9 GB |
+
+Splitting routes costs the pipeline nothing measurable; the long-distance layer adds 14 s
+and 0.8 GB.
+
 ## The engine
+
+The rest of this report measures the 36 tiers of the regional layer (step 7). The
+connected France is measured above.
 
 ### Memory
 
@@ -139,7 +289,8 @@ same lines, at 4–7 ms instead of 0.2–2 ms
 ([`results/engine_scenarios.csv`](results/engine_scenarios.csv)).
 
 Lyon → Paris takes ten and a half hours of TER. Three cross-country trips find nothing.
-That is the missing long-distance layer, not the engine.
+That is the missing long-distance layer, not the engine: on the connected France, all
+four are found within five rounds ([France connexe](#france-connexe-step-8)).
 
 ## Same-name links
 
@@ -191,7 +342,9 @@ Two findings concern the pipeline rather than the engine:
   stop sequence per route and direction, and `TripBuilder` drops the trips that do not
   cover it. That is `main`'s behaviour for every network, Lyon in production included
   (91 %). The unmerged `feat/toulon-school-year-profile` branch makes one route per
-  sequence: the engine would then load more routes and every trip.
+  sequence: the engine would then load more routes and every trip. Step 8 does the same
+  in the merge and measures it: 99.9 % of the trips kept, twice the routes, 25 MB more
+  heap ([France connexe](#france-connexe-step-8)).
 
 ## Limits
 
@@ -200,12 +353,19 @@ Two findings concern the pipeline rather than the engine:
   laptop. The ×3 in the criteria is an estimate.
 - **One day, one week.** Every number is for Tuesday 24 November 2026. A weekend or a
   holiday runs fewer trips.
-- **Regional layer only.** No TGV, OUIGO, Intercités, international trains, coaches or
-  ferries. Corsica has no train either (the CFC feed had expired).
-- **Five rounds.** At most four changes, as in the apps. Long trips over TER need more,
-  which a higher `maxRounds` would allow at a cost not measured here.
-- **The trips the pipeline drops** (17 % on France) are missing from what the engine
-  loads.
+- **One day, also for long trips.** The network holds a single day. An overnight ferry or
+  night train arrives, but the next morning's connections are not loaded: a journey that
+  needs two days cannot be found.
+- **Booking rules are not modelled.** The pipeline ignores pickup and drop-off types, so
+  the engine may use a coach or an international train for a domestic hop that is not
+  sold (cabotage), or a coach that runs on request.
+- **Corsica has no train** (the CFC feed had expired), and no Corsica Ferries crossing
+  from the mainland that week.
+- **Five rounds by default.** At most four changes, as in the apps. Eight were measured
+  in step 8: twice the cost of a random trip, no long trip gained.
+- **The regional tiers lose trips.** The 36 tiers of steps 3–7 went through the pipeline
+  without the stop-sequence split, so 4–30 % of their trips (17 % on France) are missing
+  from what the engine loads there. The step 8 networks have them all.
 
 ## What to do with this
 
@@ -219,7 +379,9 @@ Two findings concern the pipeline rather than the engine:
 - **Reset only what the previous query touched.** `RaptorState.reset()` costs O(stops ×
   rounds) per query whatever the query explores. Recording the written indices, or
   stamping entries with a query number, should bring a city trip on France close to its
-  regional cost. That is an estimate, to be measured once changed.
+  regional cost. That is an estimate, to be measured once changed. On the connected
+  France it is the main lever left for the phone's 30 ms p95, missed by 10–16 ms on
+  random and arrive-by queries.
 - **Lower the construction peak.** The France peak is 431 MB for 232 MB held. Building
   the flat arrays straight from the file buffer, without the intermediate
   `Stop`/`Transfer` objects, is the likely way to fit a 256 MB phone. That is not
@@ -229,13 +391,16 @@ Two findings concern the pipeline rather than the engine:
 
 - Convert one day rather than a week when one day is all that is written. Merging or
   reading only the reference day should take France well under the 8 GB it needs today.
-- Decide on the one-route-per-direction rule (the Toulon branch). Then convert again,
-  benchmark again, and compare.
+- Make one route per stop sequence (the Toulon branch, or what the merge's
+  `split_patterns` does to the data). Measured in step 8: 99.9 % of the trips kept instead
+  of 83 %, and 20 more préfectures within a day of Paris on the regional layer alone, for
+  25 MB of heap and 0.13 s of loading.
 - `./gradlew` fails on a JDK 25 Gradle daemon: Kotlin 2.1.0 cannot parse Java 25's version
   string. Pin the daemon JVM to 21, or move to a Kotlin version that knows Java 25.
 
-**Benchmark, step 8:** add the long-distance layer and measure a connected France. That
-is where the "yes" above either holds or does not.
+**Benchmark:** step 8 measured the connected France; the "yes" held for a server and for
+a phone's memory. What is left to measure is a real phone: load time and query time on
+ART, with the connected France and `largeHeap`.
 
 ## Every network
 
@@ -295,6 +460,7 @@ cd notebooks && ../.venv/Scripts/python -m jupyter nbconvert --to notebook --exe
 
 ```bash
 .venv/Scripts/python -m gtfs_bench.variants   # same-name links, optional; from benchmark/
+.venv/Scripts/python -m gtfs_bench.connected  # France connexe (step 8), ~20 min; also section 13 of the notebook
 ```
 
 Feeds update every day. A rerun picks another reference day and other versions, and

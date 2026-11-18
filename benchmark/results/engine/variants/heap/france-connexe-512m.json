@@ -1,0 +1,58 @@
+{
+ "tier": "france-connexe",
+ "status": "ok",
+ "failedDuring": null,
+ "error": null,
+ "engineVersion": "2.2.0",
+ "java": "21.0.7+6-LTS",
+ "maxHeapMb": 512,
+ "files": {
+  "stopsBytes": 29942923,
+  "routesBytes": 49390704
+ },
+ "network": {
+  "stops": 294130,
+  "routes": 73493,
+  "trips": 481983,
+  "stopTimes": 10453357,
+  "transfers": 1195975,
+  "implicitTransferPairs": 320190,
+  "largestNameGroup": 23
+ },
+ "load": {
+  "coldReadMs": 56.3555,
+  "coldBuildMs": 578.3328,
+  "warmBuildMs": [],
+  "warmBuildMedianMs": null
+ },
+ "heap": {
+  "retainedMb": 259.8478317260742,
+  "peakMb": 431.66294860839844
+ },
+ "querySets": [
+  {
+   "name": "random",
+   "direction": "forward",
+   "queries": 200,
+   "found": 36,
+   "latencyMs": {
+    "mean": 14.155038000000005,
+    "p50": 11.6827,
+    "p90": 30.9464,
+    "p95": 38.1005,
+    "p99": 55.7046,
+    "max": 76.1494
+   },
+   "medianDurationMin": 441.0,
+   "medianTransitLegs": 5.0,
+   "note": null
+  }
+ ],
+ "scenarios": [],
+ "process": {
+  "xmx": "512m",
+  "exit_code": 0,
+  "seconds": 7.8,
+  "peak_working_set_mb": 574
+ }
+}

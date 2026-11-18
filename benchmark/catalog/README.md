@@ -22,6 +22,33 @@ python -m gtfs_bench.catalog check        # gtfs_france.csv against the PAN toda
 - **482 rows, 225 included.** The 247 other regional rows are refused, each with its reason in `notes`.
 - **10 rows** are the long-distance layer, kept with `include=false` until step 8.
 
+**Step 8, 19 November 2026:** the 10 long-distance rows were checked against the PAN again
+(all still valid, same URLs, no new national or cross-region candidate) and switched to
+`include=true`. The regional tiers ignore them: `tiers_from_catalog` keeps
+`layer=regional` by default, and only the `france-connexe` variant
+(`gtfs_bench/connected.py`) reads both layers.
+
+What each row adds on the reference day (Tuesday 24 November 2026), once normalization has
+dropped the stops outside mainland France and the trips left with fewer than two stops:
+
+| Row | What it carries | Trips on 24 Nov | Stops served that week |
+|---|---|---:|---:|
+| `sncf-grandes-lignes` | TGV INOUI (538), coaches "à réservation" (120), OUIGO (71), Intercités day and night (72), Lyria (34), ICE (26); same zip as `sncf-ter`, without its TER stop points | 862 | 445 |
+| `flixbus` | FlixBus and FlixTrain, French part of the European network | 323 | 184 |
+| `blablacar-bus` | BlaBlaCar Bus | 100 | 103 |
+| `trenitalia-france` | Paris ↔ Lyon ↔ Marseille, Paris ↔ Chambéry ↔ Modane | 26 | 13 |
+| `renfe-ave` | Marseille, Lyon ↔ Spain, French part | 8 | 9 |
+| `corsica-linea` | Marseille ↔ Ajaccio, Bastia, L'Île-Rousse, Propriano | 5 | 5 |
+| `eurostar` | none that day: every train has one French stop (Paris-Nord, Lille…) but for 8 Roissy ↔ Marne-la-Vallée runs over the week | 0 | 2 |
+| `corsica-ferries` | none that week: its late-November crossings are Corsica ↔ Italy | 0 | 0 |
+| `brittany-ferries`, `transmanche-ferries` | none: one French port per crossing (England, Ireland, Spain) | 0 | 0 |
+
+SNCF reuses one `trip_id` across many dates, so its trip counts per week are counts of
+distinct trains, not of runs.
+
+The pipeline ignores pickup and drop-off restrictions, so the engine may use a coach or an
+international train for a domestic hop its operator does not sell (cabotage rules).
+
 | Region | Included | Refused | Source of the regional layer |
 |---|---:|---:|---|
 | 11 Île-de-France | 1 | 2 | IDFM (whole region) |
