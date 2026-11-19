@@ -20,14 +20,14 @@
   "largestNameGroup": 23
  },
  "load": {
-  "coldReadMs": 58.4454,
-  "coldBuildMs": 519.5635,
+  "coldReadMs": 69.895,
+  "coldBuildMs": 494.3065,
   "warmBuildMs": [],
   "warmBuildMedianMs": null
  },
  "heap": {
-  "retainedMb": 259.85445404052734,
-  "peakMb": 398.89601135253906
+  "retainedMb": 259.9357376098633,
+  "peakMb": 396.8963088989258
  },
  "querySets": [
   {
@@ -36,12 +36,12 @@
    "queries": 200,
    "found": 36,
    "latencyMs": {
-    "mean": 14.976998000000004,
-    "p50": 11.4715,
-    "p90": 33.8412,
-    "p95": 44.6785,
-    "p99": 55.941,
-    "max": 70.1316
+    "mean": 13.959255,
+    "p50": 11.6215,
+    "p90": 30.6931,
+    "p95": 39.3313,
+    "p99": 52.1176,
+    "max": 55.8727
    },
    "medianDurationMin": 441.0,
    "medianTransitLegs": 5.0,
@@ -52,7 +52,7 @@
  "process": {
   "xmx": "384m",
   "exit_code": 0,
-  "seconds": 8.1,
-  "peak_working_set_mb": 452
+  "seconds": 7.7,
+  "peak_working_set_mb": 453
  }
 }
