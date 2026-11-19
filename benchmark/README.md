@@ -44,8 +44,8 @@ There are two data layers:
 | 7 | Report | [`RESULTS.md`](RESULTS.md) | done |
 | 8 | Long-distance layer, connected France | catalogue + `gtfs_bench/connected.py`, `connectivity.py` | done |
 | 9 | Address search in the explorer, and its cost | `gtfs_bench/explorer/geocode.py`, harness `--mode points` | done |
-| 10 | Every school line, with a switch | catalogue `scolaire` layer, `gtfs_bench/school.py`, explorer | in review |
-| 11 | Feed horizon, three day types, daily refresh | `gtfs_bench/horizon.py`, `refresh.py` | planned |
+| 10 | Every school line, with a switch | catalogue `scolaire` layer, `gtfs_bench/school.py`, explorer | done |
+| 11 | Feed horizon, three day types, daily refresh | `gtfs_bench/horizon.py`, `refresh.py`, `refresh.ps1` | in review |
 | 12–13 | Engine memory down to a 256 MB heap | raptor-kmp branch `perf/memory-256` | planned |
 | 14 | Report update | `RESULTS.md`, `RESULTS.fr.md` | planned |
 
@@ -194,6 +194,53 @@ Each one, and the regional France as it is, then gets:
 
 The explorer opens any of them: `python -m gtfs_bench.explorer --tier france-connexe`.
 
+## Live network: the feeds' horizon, three day types, a daily refresh (step 11)
+
+```bash
+python -m gtfs_bench.horizon     # today's window: results/feed_horizon.{csv,png}, results/horizon.json
+python -m gtfs_bench.refresh     # download, recompute, rebuild data/raptor/france-live if needed
+```
+
+raptor-kmp has no calendar: one network is one day's timetable. Pelo serves TCL, whose file
+covers months, with a few day types. For France the file is the sum of 250 producers', and
+most publish only a few weeks ahead (IDFM about a month), so:
+
+- **The window** (`gtfs_bench/horizon.py`) runs from today to the day before the first feed
+  that matters stops publishing: one carrying more than 0.5 % of the trips, or the one that
+  takes the small feeds already stopped past 1 % together. The small ones that stop earlier
+  are listed (a ski shuttle between two seasons, a network whose next file is not out yet).
+  On 19 November 2026: to 18 December, set by IDFM (27 % of the trips; it had published
+  one more day by the evening); six feeds worth 0.28 % stop before.
+- **The day types**: the timetables of a Tuesday, a Saturday and a Sunday of the earliest
+  week ahead (whole weeks, so the normalized feeds stay cached), plus a holiday Tuesday when
+  the window reaches national school holidays (Christmas, summer). A date runs on its day
+  type; public holidays run as Sundays, as in Pelo.
+- **The live network** `data/raptor/france-live/` holds one folder per day type (the same
+  feeds as `france-complete`, the pipeline run with one period per day type), each with its
+  `school_routes.json`, plus `horizon.json` (the window) and `refresh.json` (the last run).
+- **The daily refresh** (`gtfs_bench/refresh.py`) keeps it ahead: it downloads every feed
+  (conditional requests, so an unchanged one costs a round trip; a feed that fails keeps
+  its last good file), asks the PAN for newer resources of the feeds about to stop (reported,
+  not added: the catalogue stays curated), recomputes the window, and rebuilds only when a
+  feed changed or the day types moved. "Changed" means the files inside the zip (names,
+  sizes, CRC-32 in `data/raw/content_signatures.json`): several APIs (Cityway, DataSud)
+  build the zip afresh at each request, so its bytes change when its timetables do not.
+  The new network is built next to the old one and
+  swapped in at the end. Its log is `data/logs/refresh-<date>.log`. About 10 minutes and
+  10 GB of RAM when it rebuilds.
+
+For the Windows task scheduler, `refresh.ps1` runs it from the venv (`.\refresh.ps1 --force`
+passes options on). A daily task at 4:00 that also runs at the next wake-up when the PC
+slept through it:
+
+```powershell
+$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$PWD\refresh.ps1`""
+Register-ScheduledTask -TaskName "raptor-gtfs-refresh" -Action $action -Trigger (New-ScheduledTaskTrigger -Daily -At 4am) -Settings (New-ScheduledTaskSettingsSet -StartWhenAvailable)
+```
+
+The benchmark numbers stay those of the reference day (24 November); every result file
+from step 11 on says the date of the data it was measured on.
+
 ## Explorer: try the engine yourself
 
 `python -m gtfs_bench.explorer` opens a terminal app on top of the real engine. raptor-kmp
@@ -212,11 +259,16 @@ runs in a JVM with France loaded once, and you pick two stops or addresses anywh
   at 4.8 km/h with a 1.3 detour factor, or the whole way when under 1 km. When that finds
   nothing, it searches again walking up to 6 km, as Pelo does, and says so. What it costs:
   `python -m gtfs_bench.engine --addresses` (results/address_queries.csv).
-- **Time:** a departure time, or "arriver avant" for arrive-by. The day is the
-  benchmark's reference day (Tuesday 24 November 2026): the tiers are converted for that
-  day only. Times past 24:00 reach that day's late-night trips (25:30 = 01:30 the next
-  morning). The previous evening's trips running past midnight are not in the network, so
-  very early mornings look emptier than they are.
+- **Date:** on the live network (`france-live`, the default once `gtfs_bench.refresh` has
+  built it), any date from today to the end of its window. Each date runs on its day type:
+  a weekday on the representative Tuesday's timetable, a Saturday on the Saturday's, a
+  Sunday or public holiday on the Sunday's. Switching day type reloads the engine (about
+  a second). The benchmark tiers (`--tier france-complete`…) have one day: the reference
+  Tuesday, 24 November 2026.
+- **Time:** a departure time, or "arriver avant" for arrive-by. Times past 24:00 reach the
+  day's late-night trips (25:30 = 01:30 the next morning). The previous evening's trips
+  running past midnight are not in the network, so very early mornings look emptier than
+  they are.
 - **Changes:** "correspondances max", 0 to 99 (− / + or type it, Enter). This is RAPTOR's
   round limit minus one; the engine's default is 4. High values make for absurd itineraries.
   Each extra round costs about 9.4 MB of search state on France, which is why the explorer

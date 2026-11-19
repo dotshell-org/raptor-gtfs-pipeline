@@ -27,10 +27,11 @@ from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.widgets import Button, Footer, Header, Input, Label, OptionList, Static, Switch
+from textual.widgets import Button, Footer, Header, Input, Label, OptionList, Select, Static, Switch
 from textual.widgets.option_list import Option
 from textual.worker import get_current_worker
 
+from ..horizon import LABELS, Plan
 from . import mapview
 from .backend import EngineServer, Journey, RouteResult
 from .geocode import Address, Geocoder
@@ -68,8 +69,28 @@ LOAD_STEPS = [
 WARMUP_QUERIES = 30
 
 
+SHORT_MONTHS = ("janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc.")
+
+
 def day_text(day: dt.date) -> str:
     return f"{DAYS[day.weekday()]} {day.day} {MONTHS[day.month - 1]} {day.year}"
+
+
+def short_day(day: dt.date) -> str:
+    return f"{DAYS[day.weekday()][:3]}. {day.day} {SHORT_MONTHS[day.month - 1]}"
+
+
+def window_dates(plan: Plan, today: dt.date) -> list[dt.date]:
+    """The dates a live network answers for: from today (or the window's start) to its end."""
+    start, end = plan.window
+    first = max(start, today)
+    return [first + dt.timedelta(days=k) for k in range((end - first).days + 1)] or [start]
+
+
+def date_option(day: dt.date, plan: Plan) -> str:
+    kind = plan.network_for(day) or "semaine"
+    model = dt.date.fromisoformat(plan.days[kind])
+    return f"{short_day(day)} · {LABELS[kind]}" + ("" if model == day else f" (comme le {short_day(model)})")
 
 
 def parse_changes(text: str) -> int | None:
@@ -187,11 +208,16 @@ class Explorer(App):
 
     def __init__(self, data_dir: Path, tier_name: str, java: str | None = None, xmx: str = "2g",
                  cache_dir: Path | None = None, reference_day: dt.date | None = None, server=None,
-                 commune_lookup=None, outline: list | None = None, geocoder=None):
+                 commune_lookup=None, outline: list | None = None, geocoder=None, plan: Plan | None = None,
+                 today: dt.date | None = None):
         super().__init__()
         self.commune_lookup, self.given_outline = commune_lookup, outline  # injected in tests
         self.data_dir, self.tier_name, self.java, self.xmx = data_dir, tier_name, java, xmx
         self.cache_dir, self.reference_day = cache_dir, reference_day
+        # A live network (gtfs_bench.refresh): any date of its window, each served by its day type.
+        self.plan = plan
+        self.dates = window_dates(plan, today or dt.date.today()) if plan else []
+        self.day: dt.date | None = self.dates[0] if self.dates else reference_day
         self.server = server  # injected in tests
         self.geocoder = geocoder if geocoder is not None else Geocoder(cache_dir / "geocode.json" if cache_dir else None)
         self.index: PlaceIndex | None = None
@@ -220,8 +246,15 @@ class Explorer(App):
             yield Label("Arrivée · arrêt ou adresse", classes="label")
             yield Input(placeholder="Part-Dieu, La Défense, Tour Eiffel…", id="to", disabled=True)
             yield OptionList(id="to_list")
-            when = f"Quand · horaires du {day_text(self.reference_day)}" if self.reference_day else "Quand"
+            if self.plan:
+                start, end = self.plan.window
+                when = f"Quand · données du {short_day(start)} au {short_day(end)}"
+            else:
+                when = f"Quand · horaires du {day_text(self.reference_day)}" if self.reference_day else "Quand"
             yield Label(when, id="when_label", classes="label")
+            if self.plan:
+                yield Select([(date_option(d, self.plan), d.isoformat()) for d in self.dates],
+                             value=self.dates[0].isoformat(), allow_blank=False, id="day")
             with Horizontal(id="when"):
                 yield Input(value="08:00", id="time", placeholder="HH:MM")
                 yield Switch(id="arrive_by")
@@ -282,7 +315,9 @@ class Explorer(App):
             index = PlaceIndex(stops)
             step("done", "places", f"{thousands(len(index))} lieux")
 
-            cache = self.cache_dir / f"{self.data_dir.parent.name}-communes.json" if self.cache_dir else None
+            # A tier's folder is <tier>/bench; a live network's is the network's own folder.
+            stem = self.data_dir.parent.name if (self.data_dir / "routes.bin").exists() else self.data_dir.name
+            cache = self.cache_dir / f"{stem}-communes.json" if self.cache_dir else None
             cached = cache is not None and cache.exists()
             step("start", "communes", "depuis le cache" if cached else "première fois : quelques secondes, puis en cache")
             index.attach_communes(cache, self.commune_lookup)
@@ -327,11 +362,25 @@ class Explorer(App):
             line.append(f"  {seconds_text(elapsed)}", style="dim")
         self.query_one("#summary", Static).update(line)
 
+    def schedule_text(self) -> str:
+        """Which timetable a search uses: the reference day, or a live network's day type."""
+        if self.plan and self.day:
+            kind = self.plan.network_for(self.day) or "semaine"
+            model = dt.date.fromisoformat(self.plan.days[kind])
+            same = "" if model == self.day else f", celui du {short_day(model)}"
+            return f"horaires du {day_text(self.day)} (réseau {LABELS[kind]}{same})"
+        return f"horaires du {day_text(self.reference_day)}" if self.reference_day else ""
+
+    def update_sub_title(self) -> None:
+        info = self.server.info
+        period = f" · réseau {info['period']}" if len(info.get("periods") or []) > 1 else ""
+        self.sub_title = (f"{self.tier_name} · {thousands(info['stops'])} arrêts · {thousands(info['routes'])} lignes · "
+                          f"{thousands(info['trips'])} courses{period} · chargé en {ms(info['loadMs'])} · "
+                          f"{info['heapMb']:.0f} Mo" + (f" · {self.schedule_text()}" if self.schedule_text() else ""))
+
     def ready(self, seconds: float) -> None:
         info = self.server.info
-        day = f" · horaires du {day_text(self.reference_day)}" if self.reference_day else ""
-        self.sub_title = (f"{self.tier_name} · {thousands(info['stops'])} arrêts · {thousands(info['routes'])} lignes · "
-                          f"{thousands(info['trips'])} courses · chargé en {ms(info['loadMs'])} · {info['heapMb']:.0f} Mo{day}")
+        self.update_sub_title()
         for widget in ("#from", "#to", "#go", "#random"):
             self.query_one(widget).disabled = False
         # School lines can be left out when the network comes with its list (gtfs_bench.school).
@@ -469,6 +518,23 @@ class Explorer(App):
         if self.chosen["from"] and self.chosen["to"]:
             self.action_route()
 
+    @on(Select.Changed, "#day")
+    def day_changed(self, event: Select.Changed) -> None:
+        if event.value is Select.BLANK:
+            return
+        self.day = dt.date.fromisoformat(str(event.value))
+        if self.server is not None and self.index is not None:
+            self.update_sub_title()
+            if self.chosen["from"] and self.chosen["to"]:
+                self.action_route()
+
+    def needed_period(self) -> str | None:
+        """The day type the chosen date needs, when the engine has another one loaded."""
+        if not (self.plan and self.day and self.server):
+            return None
+        kind = self.plan.network_for(self.day)
+        return kind if kind and kind != self.server.info.get("period") else None
+
     @on(Button.Pressed, "#fewer, #more")
     def step_changes(self, event: Button.Pressed) -> None:
         box = self.query_one("#max_changes", Input)
@@ -483,6 +549,12 @@ class Explorer(App):
                 school: bool = True) -> None:
         addresses = isinstance(origin, Address) or isinstance(destination, Address)
         try:
+            period = self.needed_period()
+            if period:  # another day type: the engine swaps networks first (about a second)
+                self.busy = (f"Chargement des horaires {LABELS[period]}…", time.perf_counter())
+                self.server.period(period)
+                self.call_from_thread(self.update_sub_title)
+                self.busy = (f"Calcul {origin.name[:30]} → {destination.name[:30]}…", time.perf_counter())
             result = self.server.route(engine_endpoint(origin), engine_endpoint(destination), when, arrive_by,
                                        max_rounds=changes + 1, fallback_walk_m=FALLBACK_WALK_M if addresses else None,
                                        school=school)
@@ -511,7 +583,8 @@ class Explorer(App):
         self.history.appendleft(f"{ms(result.ms):>9}  {origin.name[:15]} → {destination.name[:15]}{limit}")
         self.query_one("#history", Static).update(Text("Derniers calculs\n", style="bold") + Text("\n".join(self.history)))
         if self.journey is None:
-            summary = Text(f"Aucun itinéraire, {verb} {hhmm(when)}\n", style="bold #e34948")
+            summary = Text(f"Aucun itinéraire, {verb} {hhmm(when)}", style="bold #e34948")
+            summary.append(f"  ·  {self.schedule_text()}\n" if self.schedule_text() else "\n", style="dim")
             summary.append(f"calculé en {ms(result.ms)} · {limit_text(changes)}"
                            + (" · sans les lignes scolaires" if result.school_blocked else "") + "\n", style="dim")
             if result.fallback:
@@ -544,7 +617,7 @@ class Explorer(App):
         count = len(result.journeys)
         summary.append(f"calculé en {ms(result.ms)} par raptor-kmp · {count} itinéraire{'s' if count > 1 else ''} "
                        f"{'optimaux' if count > 1 else 'optimal'} (moins de changements ↔ plus tôt)\n", style="#1baf7a")
-        day = f" · horaires du {day_text(self.reference_day)}" if self.reference_day else ""
+        day = f" · {self.schedule_text()}" if self.schedule_text() else ""
         school = " · sans les lignes scolaires" if result.school_blocked else ""
         summary.append(limit_text(self.changes_used) + school + day, style="dim")
         if result.fallback:

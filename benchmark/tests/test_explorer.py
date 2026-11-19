@@ -323,6 +323,48 @@ def test_app_school_switch_reaches_the_engine():
     asyncio.run(scenario())
 
 
+def test_app_picks_a_date_and_the_engine_swaps_day_types():
+    from gtfs_bench.horizon import Plan
+
+    class LiveServer(FakeServer):
+        def __init__(self):
+            super().__init__()
+            self.info = {**FakeServer.info, "period": "semaine", "periods": ["semaine", "samedi", "dimanche"]}
+            self.swaps = []
+
+        def period(self, name):
+            self.swaps.append(name)
+            self.info = {**self.info, "period": name}
+            return self.info
+
+    plan = Plan(computed_on="2026-11-19", start="2026-11-19", end="2026-12-17", binding_feed="idfm", binding_share=0.27,
+                days={"semaine": "2026-11-24", "samedi": "2026-11-28", "dimanche": "2026-11-29"})
+
+    async def scenario():
+        server = LiveServer()
+        outline = [[(42.0, -4.0), (51.0, -4.0), (51.0, 8.0), (42.0, 8.0), (42.0, -4.0)]]
+        app = Explorer(Path("."), "Live", server=server, commune_lookup=LYON, outline=outline, geocoder=FakeGeocoder(),
+                       plan=plan, today=dt.date(2026, 11, 19))
+        async with app.run_test(size=(150, 50)) as pilot:
+            await wait_ready(app, pilot)
+            day = app.query_one("#day")
+            assert len(app.dates) == 29 and day.value == "2026-11-19"
+            assert "données du jeu. 19 nov. au jeu. 17 déc." in str(app.query_one("#when_label").render())
+            await pilot.click("#from")
+            await pilot.press(*"bellec", "enter")
+            await pilot.press(*"part dieu", "enter")
+            await pilot.pause(0.3)
+            assert server.swaps == [] and "réseau semaine, celui du mar. 24 nov." in str(app.query_one("#summary").render())
+            day.value = "2026-12-05"                                # a Saturday: the engine swaps first
+            await pilot.pause(0.4)
+            assert server.swaps == ["samedi"] and server.calls[-1][:2] == ([1, 2], [3])
+            assert "samedi 5 décembre 2026 (réseau samedi, celui du sam. 28 nov.)" in str(app.query_one("#summary").render())
+            day.value = "2026-12-08"                                # back to a weekday
+            await pilot.pause(0.4)
+            assert server.swaps == ["samedi", "semaine"] and "réseau semaine" in app.sub_title
+    asyncio.run(scenario())
+
+
 def test_school_switch_is_off_limits_without_a_list():
     async def scenario():
         app = make_app(FakeServer())

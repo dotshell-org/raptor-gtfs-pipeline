@@ -89,12 +89,16 @@ def parse_route(answer: dict) -> RouteResult:
 
 
 class EngineServer:
-    """One JVM with one network loaded. Thread-safe: requests are serialized."""
+    """One JVM with one network loaded. Thread-safe: requests are serialized.
+
+    `data_dir` is a converted tier (its routes.bin) or a live network, one sub-folder per day
+    type (gtfs_bench.refresh): then info["periods"] lists them and `period()` switches.
+    """
 
     def __init__(self, data_dir: Path, java: str | None = None, xmx: str = "2g"):
         if not (ENGINE_INSTALL / "lib").exists():
             raise EngineError(f"{ENGINE_INSTALL} is missing: run ./gradlew :benchmark-engine:installDist")
-        if not (data_dir / "routes.bin").exists():
+        if not (data_dir / "routes.bin").exists() and not list(data_dir.glob("*/routes.bin")):
             raise EngineError(f"no routes.bin in {data_dir}: convert that tier first")
         self._lock = threading.Lock()
         self._process = subprocess.Popen(
@@ -139,6 +143,11 @@ class EngineServer:
         if not school:
             payload["school"] = False
         return parse_route(self.request(payload))
+
+    def period(self, name: str) -> dict:
+        """Load another day type of a live network (one network at a time): its new info."""
+        self.info = self.request({"op": "period", "name": name})
+        return self.info
 
     def routes(self) -> list[tuple[int, str]]:
         """Every route the engine knows, as (number, name): what a school route number points at."""

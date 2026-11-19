@@ -28,8 +28,13 @@ import java.lang.management.ManagementFactory
  * Keeps one network loaded and answers routing requests, one JSON object per line.
  *
  *     benchmark-engine-serve --data data/raptor/france/bench
+ *     benchmark-engine-serve --data data/raptor/france-live [--period samedi]
  *
- * On start it prints {"type":"ready", ...sizes, load time, heap}. Then, for each line read:
+ * A live network (gtfs_bench.refresh) is one folder per day type; {"op":"period","name":…}
+ * swaps the loaded one, letting the previous go first.
+ *
+ * On start it prints {"type":"ready", ...sizes, load time, heap, period, periods}. Then, for
+ * each line read:
  *
  *     {"op":"stops"}                                    -> every stop: [id, name, lat, lon]
  *     {"op":"route","from":[ids],"to":[ids],"time":s,   -> the engine's journeys, each leg
@@ -53,36 +58,60 @@ import java.lang.management.ManagementFactory
  * before the timed run, so "ms" leaves out allocating a search state of the new size. This is
  * what gtfs_bench.explorer, the terminal explorer, talks to.
  */
+/** Day types in the order a live network lists them (gtfs_bench.horizon). */
+private val DAY_TYPES = listOf("semaine", "samedi", "dimanche", "vacances")
+
+/**
+ * The networks a --data folder holds: itself when it has routes.bin, else each sub-folder that
+ * has one (a live network: one per day type), by name.
+ */
+fun periodDirs(data: File): Map<String, File> {
+    if (File(data, "routes.bin").exists()) return mapOf(data.name to data)
+    val found = data.listFiles { f -> f.isDirectory && File(f, "routes.bin").exists() }.orEmpty().associateBy { it.name }
+    require(found.isNotEmpty()) { "no routes.bin in $data or its sub-folders" }
+    return found.toList().sortedBy { (name, _) -> DAY_TYPES.indexOf(name).let { if (it < 0) 99 else it } }.toMap()
+}
+
+/** One loaded network: what every request works on. */
+private class Loaded(val name: String, dir: File) {
+    val started = System.nanoTime()
+    val library = RaptorLibrary(File(dir, "stops.bin").readBytes(), File(dir, "routes.bin").readBytes())
+    val stops = library.getStops(library.getCurrentPeriod())
+    val routes = library.getRoutes(library.getCurrentPeriod())
+    val loadMs = (System.nanoTime() - started) / 1e6
+    val school = schoolRoutes(dir)
+    val states = SearchStates(library)
+
+    fun info(type: String, periods: Collection<String>): String {
+        repeat(2) { System.gc() }
+        val heapMb = ManagementFactory.getMemoryMXBean().heapMemoryUsage.used / 1024.0 / 1024.0
+        return JsonObject(mapOf(
+            "type" to JsonPrimitive(type),
+            "engine" to JsonPrimitive(object {}.javaClass.getResource("/raptor-kmp.version")?.readText()?.trim() ?: "?"),
+            "java" to JsonPrimitive(System.getProperty("java.runtime.version") ?: "?"),
+            "period" to JsonPrimitive(name),
+            "periods" to JsonArray(periods.map { JsonPrimitive(it) }),
+            "stops" to JsonPrimitive(stops.size),
+            "routes" to JsonPrimitive(routes.size),
+            "trips" to JsonPrimitive(routes.sumOf { it.tripCount.toLong() }),
+            "schoolRoutes" to JsonPrimitive(school.size),
+            "schoolTrips" to JsonPrimitive(routes.filter { it.id in school }.sumOf { it.tripCount.toLong() }),
+            "loadMs" to JsonPrimitive(loadMs),
+            "heapMb" to JsonPrimitive(heapMb),
+        )).toString()
+    }
+}
+
 fun main(args: Array<String>) {
     val values = args.toList().chunked(2).associate { (k, v) -> k.removePrefix("--") to v }
-    val data = File(values["data"] ?: error("--data is required"))
+    val periods = periodDirs(File(values["data"] ?: error("--data is required")))
     // The console may not be UTF-8 (Windows): write bytes ourselves so stop names survive.
     val out = PrintStream(FileOutputStream(FileDescriptor.out), true, Charsets.UTF_8)
 
-    val started = System.nanoTime()
-    val library = RaptorLibrary(File(data, "stops.bin").readBytes(), File(data, "routes.bin").readBytes())
-    val period = library.getCurrentPeriod()
-    val stops = library.getStops(period)
-    val routes = library.getRoutes(period)
-    val loadMs = (System.nanoTime() - started) / 1e6
-    val school = schoolRoutes(data)
-    repeat(2) { System.gc() }
-    val heapMb = ManagementFactory.getMemoryMXBean().heapMemoryUsage.used / 1024.0 / 1024.0
+    val first = values["period"]?.takeIf { it in periods } ?: periods.keys.first()
+    var current: Loaded? = Loaded(first, periods.getValue(first))
+    out.println(current!!.info("ready", periods.keys))
 
-    out.println(JsonObject(mapOf(
-        "type" to JsonPrimitive("ready"),
-        "engine" to JsonPrimitive(object {}.javaClass.getResource("/raptor-kmp.version")?.readText()?.trim() ?: "?"),
-        "java" to JsonPrimitive(System.getProperty("java.runtime.version") ?: "?"),
-        "stops" to JsonPrimitive(stops.size),
-        "routes" to JsonPrimitive(routes.size),
-        "trips" to JsonPrimitive(routes.sumOf { it.tripCount.toLong() }),
-        "schoolRoutes" to JsonPrimitive(school.size),
-        "schoolTrips" to JsonPrimitive(routes.filter { it.id in school }.sumOf { it.tripCount.toLong() }),
-        "loadMs" to JsonPrimitive(loadMs),
-        "heapMb" to JsonPrimitive(heapMb),
-    )))
-
-    val states = SearchStates(library)
     val input = System.`in`.bufferedReader(Charsets.UTF_8)
     while (true) {
         val line = input.readLine() ?: break
@@ -90,16 +119,28 @@ fun main(args: Array<String>) {
         val answer = try {
             val request = Json.parseToJsonElement(line).jsonObject
             when (request["op"]?.jsonPrimitive?.content) {
-                "stops" -> stopsAnswer(stops)
-                "routes" -> routesAnswer(routes)
-                "route" -> routeAnswer(library, stops, states, request, school)
+                "stops" -> stopsAnswer(current!!.stops)
+                "routes" -> routesAnswer(current!!.routes)
+                "route" -> current!!.let { routeAnswer(it.library, it.stops, it.states, request, it.school) }
+                "period" -> {
+                    // One network at a time: the previous one is let go before the next loads,
+                    // so switching day type never needs room for two.
+                    val name = request["name"]!!.jsonPrimitive.content
+                    val dir = periods[name] ?: error("no period $name, only ${periods.keys}")
+                    if (name != current?.name) {
+                        current = null
+                        System.gc()
+                        current = Loaded(name, dir)
+                    }
+                    current!!.info("period", periods.keys)
+                }
                 "quit" -> break
                 else -> """{"type":"error","message":"unknown op"}"""
             }
         } catch (error: OutOfMemoryError) {
             // A search state is (rounds + 1) × stops × 8 ints: a very high round limit on
             // France does not fit a small heap. Free it and keep serving.
-            states.drop()
+            current?.states?.drop()
             System.gc()
             val heapMb = Runtime.getRuntime().maxMemory() / 1024 / 1024
             errorAnswer("OutOfMemoryError: no room for that many rounds in a $heapMb MB heap")
