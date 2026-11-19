@@ -1,0 +1,13 @@
+# Downloaded, extracted, merged and converted data stays on the machine that produced it.
+# Several source licences (ODbL, Licence Mobilités) put conditions on redistributing a
+# derived database, and a merged feed of France is one.
+data/
+
+# Credentials (see .env.example) and the local environment.
+.env
+.venv/
+.ipynb_checkpoints/
+
+# The root .gitignore drops every *.json as build output; measurements under results/
+# are the point of this folder and are committed.
+!results/**/*.json

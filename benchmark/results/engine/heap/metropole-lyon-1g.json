@@ -1,0 +1,58 @@
+{
+ "tier": "metropole:lyon",
+ "status": "ok",
+ "failedDuring": null,
+ "error": null,
+ "engineVersion": "2.2.0",
+ "java": "21.0.7+6-LTS",
+ "maxHeapMb": 1024,
+ "files": {
+  "stopsBytes": 947427,
+  "routesBytes": 1895386
+ },
+ "network": {
+  "stops": 9625,
+  "routes": 1490,
+  "trips": 19976,
+  "stopTimes": 426603,
+  "transfers": 42408,
+  "implicitTransferPairs": 16388,
+  "largestNameGroup": 21
+ },
+ "load": {
+  "coldReadMs": 4.6501,
+  "coldBuildMs": 57.5333,
+  "warmBuildMs": [],
+  "warmBuildMedianMs": null
+ },
+ "heap": {
+  "retainedMb": 8.660224914550781,
+  "peakMb": 18.47504425048828
+ },
+ "querySets": [
+  {
+   "name": "random",
+   "direction": "forward",
+   "queries": 200,
+   "found": 98,
+   "latencyMs": {
+    "mean": 0.4664260000000002,
+    "p50": 0.5116,
+    "p90": 0.8947,
+    "p95": 0.9717,
+    "p99": 1.0863,
+    "max": 1.1002
+   },
+   "medianDurationMin": 106.0,
+   "medianTransitLegs": 4.0,
+   "note": null
+  }
+ ],
+ "scenarios": [],
+ "process": {
+  "xmx": "1g",
+  "exit_code": 0,
+  "seconds": 1.6,
+  "peak_working_set_mb": 74
+ }
+}

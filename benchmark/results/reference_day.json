@@ -1,0 +1,24 @@
+{
+ "reference_date": "2026-11-24",
+ "chosen_by": "coverage",
+ "window": {
+  "start": "2026-11-23",
+  "end": "2026-11-29"
+ },
+ "feeds_total": 225,
+ "feeds_running_that_day": 220,
+ "feeds_not_running_that_day": [
+  "bacs-ecouflant-cantenay-epinard-et-pruille",
+  "funiculaire-des-arcs",
+  "telecabine-eau-d-olle-express-allemond-oz",
+  "telepherique-bastille",
+  "transaltitude-isere"
+ ],
+ "school_holidays": [
+  [
+   "2026-12-19",
+   "2027-01-04"
+  ]
+ ],
+ "computed_on": "2026-11-18"
+}

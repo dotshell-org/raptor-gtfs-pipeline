@@ -1,0 +1,58 @@
+{
+ "tier": "region:11",
+ "status": "ok",
+ "failedDuring": null,
+ "error": null,
+ "engineVersion": "2.2.0",
+ "java": "21.0.7+6-LTS",
+ "maxHeapMb": 4096,
+ "files": {
+  "stopsBytes": 3866163,
+  "routesBytes": 11815038
+ },
+ "network": {
+  "stops": 35401,
+  "routes": 3741,
+  "trips": 122766,
+  "stopTimes": 2746241,
+  "transfers": 194377,
+  "implicitTransferPairs": 56810,
+  "largestNameGroup": 23
+ },
+ "load": {
+  "coldReadMs": 15.0837,
+  "coldBuildMs": 144.813,
+  "warmBuildMs": [],
+  "warmBuildMedianMs": null
+ },
+ "heap": {
+  "retainedMb": 37.41648864746094,
+  "peakMb": 85.23128509521484
+ },
+ "querySets": [
+  {
+   "name": "random",
+   "direction": "forward",
+   "queries": 200,
+   "found": 124,
+   "latencyMs": {
+    "mean": 3.0590124999999984,
+    "p50": 3.1987,
+    "p90": 5.6548,
+    "p95": 6.1409,
+    "p99": 7.8406,
+    "max": 8.4614
+   },
+   "medianDurationMin": 130.0,
+   "medianTransitLegs": 5.0,
+   "note": null
+  }
+ ],
+ "scenarios": [],
+ "process": {
+  "xmx": "4g",
+  "exit_code": 0,
+  "seconds": 2.8,
+  "peak_working_set_mb": 151
+ }
+}

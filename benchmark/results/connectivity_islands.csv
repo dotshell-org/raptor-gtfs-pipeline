@@ -1,0 +1,86 @@
+network,stops,feed,feeds,region,example_stop,lat,lon,gap_to_main_m,closest_stop,closest_main_stop,likely_cause
+france,481,muvistrada,4,Corse,Santa Catalina,41.8146,8.9226,199926,A PIANA - Centru,FONTAINE (Antibes),no link at all
+france,148,via-bastia,1,Corse,Albitreccia,42.6973,9.4437,201267,Mandriale,Frontière St Ludovic,no link at all
+france,34,pays-de-gex,1,,Bossy,46.2685,6.1247,714,"Collex, Vireloup","Ferney, Lycée",no walkable link
+france,29,agregat-grand-est,1,Grand Est,BOURBONNE-LES-BAINS - College,47.9357,5.7092,2399,VOISEY - Vaux la douce,GUYONVELLE - Centre,no walkable link
+france,27,cars-region-puy-de-dome,1,Auvergne-Rhône-Alpes,Beaugut,46.0879,2.6487,312,Ecole (Pionsat),Gare (Pionsat),missing link
+france,17,agregat-normandie,1,Normandie,BIVILLE Ecole-Mairie,49.6261,-1.8202,382,BEAUMONT-HAGUE College Le Hague Dike,BEAUMONT-HAGUE Cité Coriallo,missing link
+france,16,agregat-bretagne,1,Bretagne,Ecole La Trinité,47.6351,-3.451,6709,Kermario,Kerroc'h (Ploemeur),no link at all
+france,12,agregat-centre-val-de-loire,1,Centre-Val de Loire,Bourg Eglise (Le Bignon-Mirabeau),48.1066,2.7697,1532,Place St-Macé,Gare de Ferrières - Fontenay,no walkable link
+france,8,agregat-centre-val-de-loire,1,Centre-Val de Loire,Ecole (Outarville),48.2347,2.043,1000,Place de la Mairie (Boisseaux),Boisseaux,no walkable link
+france,7,agregat-centre-val-de-loire,1,Normandie,Buray,48.7935,1.2119,605,Ecole de la Madeleine-de-Nonancourt,Rue de la Gare (Nonancourt),no walkable link
+france,7,m-tag,1,Auvergne-Rhône-Alpes,"Vaulnaveys-le-Bas, La Gorge",45.1043,5.8199,445,"Vaulnaveys-le-Bas, École du Bourg","Vaulnaveys-le-Bas, Vaulnaveys-Le-Bas Le Village",missing link
+france,6,agregat-aura,1,Auvergne-Rhône-Alpes,Ecole (La Bastide-Puylaurent),44.5841,3.9454,702,Ecole (La Bastide-Puylaurent),La Bastide-St-Laurent-les-B.,no walkable link
+france,6,agregat-aura,1,Auvergne-Rhône-Alpes,Ecole (Bellegarde-en-Diois),44.5149,5.486,4979,Maison du Lac (Saint-Dizier-en-Diois),Route de Valdrome,no link at all
+france,5,a-balanina,1,Corse,Gare routière/Les Allées,42.6124,9.0063,179784,Fogata-Leclerc,Frontière St Ludovic,no link at all
+france,5,agregat-centre-val-de-loire,1,Centre-Val de Loire,Eglise (Le Charme),47.8192,2.9207,4518,Mairie (Melleroy),Av. Charles Roux,no link at all
+france,5,agregat-aura,1,Provence-Alpes-Côte d'Azur,Chemin de Chauvel,44.347,5.4881,346,Ecole (Rosans),Sainte-Catherine (Rosans),missing link
+france,4,zoom,1,Bourgogne-Franche-Comté,SAMPIGNY MAIRIE,46.9087,4.6724,333,SAMPIGNY MAIRIE,Gare (Sampigny-lès-Maranges),missing link
+france,4,agregat-aura,1,Auvergne-Rhône-Alpes,Fereyrolles,44.488,3.9917,2216,Fereyrolles,Village (Montselgues),no walkable link
+france,3,agregat-grand-est,1,Grand Est,Dépot urbain,48.9612,4.3445,367,Point 2,Centre Patton,missing link
+france,3,agregat-nouvelle-aquitaine,1,Nouvelle-Aquitaine,Eyliac Ecole,45.1379,0.9063,344,Eyliac Ecole,LR Eyliac - Le Bourg (2),missing link
+france,2,agregat-aura,1,Auvergne-Rhône-Alpes,Dépose usagers TPMR,45.0109,2.4521,1174,Prise en charge usagers TPMR,Mandailles,no walkable link
+france,2,agregat-grand-est,1,Grand Est,IS-EN-BASSIGNY - Centre,48.0305,5.3977,3087,IS-EN-BASSIGNY - Centre,RANGECOURT - Centre,no link at all
+france,2,agregat-normandie,1,Normandie,Embarcadere de Jumieges,49.4288,0.8026,1017,Embarcadere de Jumieges,Abbaye de Jumièges,no walkable link
+france,2,agregat-nouvelle-aquitaine,1,Nouvelle-Aquitaine,handibus 1,45.5536,0.7221,4122,handibus 2,DOURNAZAC - BOURG,no link at all
+france,2,agregat-nouvelle-aquitaine,1,,Jetée Bélisaire,44.6605,-1.2028,421,Jetée Bélisaire,Bélisaire,missing link
+france,2,agregat-normandie,1,Normandie,Embarcadere Passage d'Yainville,49.457,0.8176,361,Embarcadere de Yainville,Zone Industrielle (Yainville),missing link
+france,2,naolib,1,Pays de la Loire,Petit Port - Facultés,47.2425,-1.5467,342,Port Boyer (Nantes 2),Pouliguen,missing link
+france,2,tempo-bus,1,Nouvelle-Aquitaine,Ecole (Saint-Jean-de-Thurac),44.158,0.7645,803,Ecole (Saint-Jean-de-Thurac),Larroque Ouest,no walkable link
+france,2,tcat,1,Grand Est,PEGAZ,48.2958,4.1635,1086,PEGAZ,MAIRIE THENNELIERES,no walkable link
+france-patterns,481,muvistrada,4,Corse,Santa Catalina,41.8146,8.9226,199926,A PIANA - Centru,FONTAINE (Antibes),no link at all
+france-patterns,148,via-bastia,1,Corse,Albitreccia,42.6973,9.4437,201267,Mandriale,Frontière St Ludovic,no link at all
+france-patterns,34,pays-de-gex,1,,Bossy,46.2685,6.1247,714,"Collex, Vireloup","Ferney, Lycée",no walkable link
+france-patterns,29,agregat-grand-est,1,Grand Est,BOURBONNE-LES-BAINS - College,47.9357,5.7092,2399,VOISEY - Vaux la douce,GUYONVELLE - Centre,no walkable link
+france-patterns,27,cars-region-puy-de-dome,1,Auvergne-Rhône-Alpes,Beaugut,46.0879,2.6487,312,Ecole (Pionsat),Gare (Pionsat),missing link
+france-patterns,17,agregat-normandie,1,Normandie,BIVILLE Ecole-Mairie,49.6261,-1.8202,382,BEAUMONT-HAGUE College Le Hague Dike,BEAUMONT-HAGUE Cité Coriallo,missing link
+france-patterns,16,agregat-bretagne,1,Bretagne,Ecole La Trinité,47.6351,-3.451,6709,Kermario,Kerroc'h (Ploemeur),no link at all
+france-patterns,12,agregat-centre-val-de-loire,1,Centre-Val de Loire,Bourg Eglise (Le Bignon-Mirabeau),48.1066,2.7697,1532,Place St-Macé,Gare de Ferrières - Fontenay,no walkable link
+france-patterns,8,agregat-centre-val-de-loire,1,Centre-Val de Loire,Ecole (Outarville),48.2347,2.043,1000,Place de la Mairie (Boisseaux),Boisseaux,no walkable link
+france-patterns,7,agregat-centre-val-de-loire,1,Normandie,Buray,48.7935,1.2119,605,Ecole de la Madeleine-de-Nonancourt,Rue de la Gare (Nonancourt),no walkable link
+france-patterns,7,m-tag,1,Auvergne-Rhône-Alpes,"Vaulnaveys-le-Bas, La Gorge",45.1043,5.8199,445,"Vaulnaveys-le-Bas, École du Bourg","Vaulnaveys-le-Bas, Vaulnaveys-Le-Bas Le Village",missing link
+france-patterns,6,agregat-aura,1,Auvergne-Rhône-Alpes,Ecole (La Bastide-Puylaurent),44.5841,3.9454,702,Ecole (La Bastide-Puylaurent),La Bastide-St-Laurent-les-B.,no walkable link
+france-patterns,6,agregat-aura,1,Auvergne-Rhône-Alpes,Ecole (Bellegarde-en-Diois),44.5149,5.486,4979,Maison du Lac (Saint-Dizier-en-Diois),Route de Valdrome,no link at all
+france-patterns,5,a-balanina,1,Corse,Gare routière/Les Allées,42.6124,9.0063,179784,Fogata-Leclerc,Frontière St Ludovic,no link at all
+france-patterns,5,agregat-centre-val-de-loire,1,Centre-Val de Loire,Eglise (Le Charme),47.8192,2.9207,4518,Mairie (Melleroy),Av. Charles Roux,no link at all
+france-patterns,5,agregat-aura,1,Provence-Alpes-Côte d'Azur,Chemin de Chauvel,44.347,5.4881,346,Ecole (Rosans),Sainte-Catherine (Rosans),missing link
+france-patterns,4,zoom,1,Bourgogne-Franche-Comté,SAMPIGNY MAIRIE,46.9087,4.6724,333,SAMPIGNY MAIRIE,Gare (Sampigny-lès-Maranges),missing link
+france-patterns,4,agregat-aura,1,Auvergne-Rhône-Alpes,Fereyrolles,44.488,3.9917,2216,Fereyrolles,Village (Montselgues),no walkable link
+france-patterns,3,agregat-grand-est,1,Grand Est,Dépot urbain,48.9612,4.3445,367,Point 2,Centre Patton,missing link
+france-patterns,3,agregat-nouvelle-aquitaine,1,Nouvelle-Aquitaine,Eyliac Ecole,45.1379,0.9063,344,Eyliac Ecole,LR Eyliac - Le Bourg (2),missing link
+france-patterns,2,agregat-aura,1,Auvergne-Rhône-Alpes,Dépose usagers TPMR,45.0109,2.4521,1174,Prise en charge usagers TPMR,Mandailles,no walkable link
+france-patterns,2,agregat-grand-est,1,Grand Est,IS-EN-BASSIGNY - Centre,48.0305,5.3977,3087,IS-EN-BASSIGNY - Centre,RANGECOURT - Centre,no link at all
+france-patterns,2,agregat-normandie,1,Normandie,Embarcadere de Jumieges,49.4288,0.8026,1017,Embarcadere de Jumieges,Abbaye de Jumièges,no walkable link
+france-patterns,2,agregat-nouvelle-aquitaine,1,Nouvelle-Aquitaine,handibus 1,45.5536,0.7221,4122,handibus 2,DOURNAZAC - BOURG,no link at all
+france-patterns,2,agregat-nouvelle-aquitaine,1,,Jetée Bélisaire,44.6605,-1.2028,421,Jetée Bélisaire,Bélisaire,missing link
+france-patterns,2,agregat-normandie,1,Normandie,Embarcadere Passage d'Yainville,49.457,0.8176,361,Embarcadere de Yainville,Zone Industrielle (Yainville),missing link
+france-patterns,2,naolib,1,Pays de la Loire,Petit Port - Facultés,47.2425,-1.5467,342,Port Boyer (Nantes 2),Pouliguen,missing link
+france-patterns,2,tempo-bus,1,Nouvelle-Aquitaine,Ecole (Saint-Jean-de-Thurac),44.158,0.7645,803,Ecole (Saint-Jean-de-Thurac),Larroque Ouest,no walkable link
+france-patterns,2,tcat,1,Grand Est,PEGAZ,48.2958,4.1635,1086,PEGAZ,MAIRIE THENNELIERES,no walkable link
+france-connexe,34,pays-de-gex,1,,Bossy,46.2685,6.1247,714,"Collex, Vireloup","Ferney, Lycée",no walkable link
+france-connexe,29,agregat-grand-est,1,Grand Est,BOURBONNE-LES-BAINS - College,47.9357,5.7092,2399,VOISEY - Vaux la douce,GUYONVELLE - Centre,no walkable link
+france-connexe,27,cars-region-puy-de-dome,1,Auvergne-Rhône-Alpes,Beaugut,46.0879,2.6487,312,Ecole (Pionsat),Gare (Pionsat),missing link
+france-connexe,17,agregat-normandie,1,Normandie,BIVILLE Ecole-Mairie,49.6261,-1.8202,382,BEAUMONT-HAGUE College Le Hague Dike,BEAUMONT-HAGUE Cité Coriallo,missing link
+france-connexe,16,agregat-bretagne,1,Bretagne,Ecole La Trinité,47.6351,-3.451,6709,Kermario,Kerroc'h (Ploemeur),no link at all
+france-connexe,12,agregat-centre-val-de-loire,1,Centre-Val de Loire,Bourg Eglise (Le Bignon-Mirabeau),48.1066,2.7697,1532,Place St-Macé,Gare de Ferrières - Fontenay,no walkable link
+france-connexe,8,agregat-centre-val-de-loire,1,Centre-Val de Loire,Ecole (Outarville),48.2347,2.043,1000,Place de la Mairie (Boisseaux),Boisseaux,no walkable link
+france-connexe,7,agregat-centre-val-de-loire,1,Normandie,Buray,48.7935,1.2119,605,Ecole de la Madeleine-de-Nonancourt,Rue de la Gare (Nonancourt),no walkable link
+france-connexe,7,m-tag,1,Auvergne-Rhône-Alpes,"Vaulnaveys-le-Bas, La Gorge",45.1043,5.8199,445,"Vaulnaveys-le-Bas, École du Bourg","Vaulnaveys-le-Bas, Vaulnaveys-Le-Bas Le Village",missing link
+france-connexe,6,agregat-aura,1,Auvergne-Rhône-Alpes,Ecole (La Bastide-Puylaurent),44.5841,3.9454,702,Ecole (La Bastide-Puylaurent),La Bastide-St-Laurent-les-B.,no walkable link
+france-connexe,6,agregat-aura,1,Auvergne-Rhône-Alpes,Ecole (Bellegarde-en-Diois),44.5149,5.486,4979,Maison du Lac (Saint-Dizier-en-Diois),Route de Valdrome,no link at all
+france-connexe,5,a-balanina,1,Corse,Gare routière/Les Allées,42.6124,9.0063,1047,Gare routière/Les Allées,L'ÎLE-ROUSSE,no walkable link
+france-connexe,5,agregat-centre-val-de-loire,1,Centre-Val de Loire,Eglise (Le Charme),47.8192,2.9207,4518,Mairie (Melleroy),Av. Charles Roux,no link at all
+france-connexe,5,agregat-aura,1,Provence-Alpes-Côte d'Azur,Chemin de Chauvel,44.347,5.4881,346,Ecole (Rosans),Sainte-Catherine (Rosans),missing link
+france-connexe,4,agregat-aura,1,Auvergne-Rhône-Alpes,Fereyrolles,44.488,3.9917,2216,Fereyrolles,Village (Montselgues),no walkable link
+france-connexe,4,zoom,1,Bourgogne-Franche-Comté,SAMPIGNY MAIRIE,46.9087,4.6724,333,SAMPIGNY MAIRIE,Gare (Sampigny-lès-Maranges),missing link
+france-connexe,3,agregat-nouvelle-aquitaine,1,Nouvelle-Aquitaine,Eyliac Ecole,45.1379,0.9063,344,Eyliac Ecole,LR Eyliac - Le Bourg (2),missing link
+france-connexe,3,agregat-grand-est,1,Grand Est,Dépot urbain,48.9612,4.3445,367,Point 2,Centre Patton,missing link
+france-connexe,2,agregat-aura,1,Auvergne-Rhône-Alpes,Dépose usagers TPMR,45.0109,2.4521,1174,Prise en charge usagers TPMR,Mandailles,no walkable link
+france-connexe,2,agregat-grand-est,1,Grand Est,IS-EN-BASSIGNY - Centre,48.0305,5.3977,3087,IS-EN-BASSIGNY - Centre,RANGECOURT - Centre,no link at all
+france-connexe,2,agregat-normandie,1,Normandie,Embarcadere de Jumieges,49.4288,0.8026,1017,Embarcadere de Jumieges,Abbaye de Jumièges,no walkable link
+france-connexe,2,agregat-nouvelle-aquitaine,1,Nouvelle-Aquitaine,handibus 1,45.5536,0.7221,4122,handibus 2,DOURNAZAC - BOURG,no link at all
+france-connexe,2,agregat-normandie,1,Normandie,Embarcadere Passage d'Yainville,49.457,0.8176,361,Embarcadere de Yainville,Zone Industrielle (Yainville),missing link
+france-connexe,2,naolib,1,Pays de la Loire,Petit Port - Facultés,47.2425,-1.5467,342,Port Boyer (Nantes 2),Pouliguen,missing link
+france-connexe,2,agregat-nouvelle-aquitaine,1,,Jetée Bélisaire,44.6605,-1.2028,421,Jetée Bélisaire,Bélisaire,missing link
+france-connexe,2,tcat,1,Grand Est,PEGAZ,48.2958,4.1635,1086,PEGAZ,MAIRIE THENNELIERES,no walkable link
+france-connexe,2,tempo-bus,1,Nouvelle-Aquitaine,Ecole (Saint-Jean-de-Thurac),44.158,0.7645,803,Ecole (Saint-Jean-de-Thurac),Larroque Ouest,no walkable link
