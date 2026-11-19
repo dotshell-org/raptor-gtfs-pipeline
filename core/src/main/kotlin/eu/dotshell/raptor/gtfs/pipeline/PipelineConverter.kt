@@ -56,8 +56,8 @@ object PipelineConverter {
         }
 
         PipelineLog.info("Building routes and trips from GTFS data...")
-        val routes = RouteBuilder.buildRoutes(reader)
-        TripBuilder.buildAndSortTrips(reader, routes, allowPartial = config.allowPartialTrips)
+        val routes = RouteBuilder.buildRoutes(reader, config.routePerStopSequence)
+        TripBuilder.buildAndSortTrips(reader, routes, config.routePerStopSequence)
         val totalTrips = routes.sumOf { it.trips.size }
         PipelineLog.info("Built ${routes.size} routes with $totalTrips trips total")
 

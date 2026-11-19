@@ -115,7 +115,8 @@ object Pipeline {
                 config = config.copy(
                     splitByPeriods = true,
                     flatOutput = config.flatOutput || profile.options.flatOutput,
-                    writeIndex = config.writeIndex && profile.options.writeIndex
+                    writeIndex = config.writeIndex && profile.options.writeIndex,
+                    routePerStopSequence = config.routePerStopSequence || profile.options.routePerStopSequence
                 )
             }
 

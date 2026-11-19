@@ -23,7 +23,6 @@ class ConvertCommand : CliktCommand(name = "convert", help = "Convert GTFS to bi
     private val compression by option("--compression", help = "Enable delta compression").flag(default = true)
     private val debugJson by option("--debug-json", help = "Generate debug JSON files").flag(default = false)
     private val genTransfers by option("--gen-transfers", help = "Generate walking transfers").flag(default = false)
-    private val allowPartialTrips by option("--allow-partial-trips", help = "Allow partial trips").flag(default = false)
     private val speedWalk by option("--speed-walk", help = "Walking speed in m/s").double().default(1.33)
     private val transferCutoff by option("--transfer-cutoff", help = "Transfer generation cutoff in meters").int().default(500)
     private val jobs by option("--jobs", help = "Number of parallel jobs").int().default(1)
@@ -44,7 +43,6 @@ class ConvertCommand : CliktCommand(name = "convert", help = "Convert GTFS to bi
                 compression = compression,
                 debugJson = debugJson,
                 genTransfers = genTransfers,
-                allowPartialTrips = allowPartialTrips,
                 speedWalk = speedWalk,
                 transferCutoff = transferCutoff,
                 jobs = jobs,

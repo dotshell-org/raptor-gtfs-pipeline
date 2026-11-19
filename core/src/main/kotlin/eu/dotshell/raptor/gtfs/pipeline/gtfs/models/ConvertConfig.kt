@@ -16,8 +16,6 @@ data class ConvertConfig(
     val debugJson: Boolean = false,
     @SerialName("gen_transfers")
     val genTransfers: Boolean = false,
-    @SerialName("allow_partial_trips")
-    val allowPartialTrips: Boolean = false,
     @SerialName("speed_walk")
     val speedWalk: Double = 1.33,
     @SerialName("transfer_cutoff")
@@ -33,5 +31,8 @@ data class ConvertConfig(
     @SerialName("flat_output")
     val flatOutput: Boolean = false,
     @SerialName("write_index")
-    val writeIndex: Boolean = true
+    val writeIndex: Boolean = true,
+    /** One route per stop sequence instead of per direction; see RouteBuilder.buildRoutes. */
+    @SerialName("route_per_stop_sequence")
+    val routePerStopSequence: Boolean = false
 )
