@@ -40,15 +40,19 @@ def tier_dir(key: str) -> Path:
 
 
 def run_harness(key: str, xmx: str = "12g", mode: str = "full", out: Path | None = None, java: str | None = None,
-                extra: tuple[str, ...] = (), timeout_s: int = 3600, data_dir: Path | None = None) -> dict:
-    """One JVM, one tier. Returns the harness's report plus the process's peak working set."""
-    if not (ENGINE_INSTALL / "lib").exists():
-        raise FileNotFoundError(f"{ENGINE_INSTALL} is missing: run ./gradlew :benchmark-engine:installDist")
+                extra: tuple[str, ...] = (), timeout_s: int = 3600, data_dir: Path | None = None,
+                install: Path = ENGINE_INSTALL) -> dict:
+    """One JVM, one tier. Returns the harness's report plus the process's peak working set.
+
+    `install` is the harness's installDist folder: another one (a copy built against another
+    raptor-kmp, see engines.py) times that engine instead."""
+    if not (install / "lib").exists():
+        raise FileNotFoundError(f"{install} is missing: run ./gradlew :benchmark-engine:installDist")
     out = out or RESULTS_DIR / "engine" / f"{key.replace(':', '-')}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     if out.exists():
         out.unlink()
-    command = [java_executable(java), f"-Xmx{xmx}", "-cp", str(ENGINE_INSTALL / "lib" / "*"), MAIN_CLASS,
+    command = [java_executable(java), f"-Xmx{xmx}", "-cp", str(install / "lib" / "*"), MAIN_CLASS,
                "--data", str(data_dir or tier_dir(key)), "--tier", key, "--out", str(out), "--mode", mode,
                "--areas", str(ENGINE_DIR / "areas.csv"), "--scenarios", str(ENGINE_DIR / "scenarios.csv"), *extra]
     started = time.perf_counter()

@@ -44,6 +44,8 @@ private class Options(args: Array<String>) {
     val areas = values["areas"]?.let(::File)
     val scenarios = values["scenarios"]?.let(::File)
     val maxRounds = values["max-rounds"]?.toInt() ?: 5
+    /** Where to write the class histogram of the loaded network (what the heap holds, by class). */
+    val histogram = values["histogram"]?.let(::File)
 }
 
 fun main(args: Array<String>) {
@@ -109,6 +111,14 @@ private fun run(options: Options): Report {
     phase = "measure heap"
     collect()
     val retained = usedHeapMb() - baseline
+    options.histogram?.let { file ->
+        // The JVM's own GC.class_histogram (as jcmd prints it), right after the network is built.
+        val text = ManagementFactory.getPlatformMBeanServer().invoke(
+            javax.management.ObjectName("com.sun.management:type=DiagnosticCommand"), "gcClassHistogram",
+            arrayOf<Any>(arrayOf<String>()), arrayOf("[Ljava.lang.String;")) as String
+        file.parentFile?.mkdirs()
+        file.writeText(text.lines().take(45).joinToString("\n"))
+    }
 
     val stops = library.getStops(period)
     val routes = library.getRoutes(period)
@@ -151,6 +161,11 @@ private fun run(options: Options): Report {
     } else if (options.mode == "school") {
         phase = "school"
         querySets += schoolSets(library, ids, index, options, extras)
+    } else if (options.mode == "golden") {
+        phase = "golden"
+        val (sets, perQuery) = goldenSets(library, stops, ids, index, options)
+        return base(options).copy(files = Files(stopsFile.length(), routesFile.length()), network = network,
+                                  heap = Heap(retainedMb = retained, peakMb = peakHeapMb()), golden = sets, goldenQueries = perQuery)
     } else if (options.mode == "full") {
         val random = randomQueries(ids, options.queries, options.seed)
         querySets += timeSet("random", "forward", random) { forward(library, it, options.maxRounds) }
@@ -184,6 +199,53 @@ private fun run(options: Options): Report {
         scenarios = scenarios,
         extras = extras,
     )
+}
+
+/** Every field of every journey, in order: two engines that agree here return the same thing. */
+private fun canonical(journeys: List<List<JourneyLeg>>): String = journeys.joinToString(";") { legs ->
+    legs.joinToString("/") { l ->
+        listOf(l.legType, l.fromStopIndex, l.toStopIndex, l.departureTime, l.arrivalTime, l.routeName, l.direction,
+               l.isTransfer, l.intermediateStopIndices.joinToString(","), l.intermediateArrivalTimes.joinToString(","),
+               l.fromLat, l.fromLon, l.toLat, l.toLon).joinToString("|")
+    }
+}
+
+private fun sha(text: String): String =
+    java.security.MessageDigest.getInstance("SHA-256").digest(text.toByteArray()).joinToString("") { "%02x".format(it) }.take(16)
+
+/**
+ * Golden journeys: the exact output of fixed queries, hashed, so two engine builds can be
+ * compared (an optimization must return the very same journeys). Sets: random stop pairs
+ * forward and arrive-by, the local sets of areas.csv, addresses forward and arrive-by, and the
+ * school lines left out when the network has its list.
+ */
+private fun goldenSets(library: RaptorLibrary, stops: List<Stop>, ids: List<Int>, index: StopIndex, options: Options):
+        Pair<Map<String, String>, Map<String, List<String>>> {
+    val rounds = options.maxRounds
+    val sets = linkedMapOf<String, List<() -> List<List<JourneyLeg>>>>()
+    val random = randomQueries(ids, options.queries, options.seed)
+    sets["random:forward"] = random.map { q -> { forward(library, q, rounds) } }
+    sets["random:arrive_by"] = random.take(300).map { q -> { arriveBy(library, q.copy(time = q.time + 3600), rounds) } }
+    options.areas?.let(::readAreas)?.forEach { area ->
+        localQueries(area, index, options.seed)?.let { local ->
+            sets["${area.name}:forward"] = local.map { q -> { forward(library, q, rounds) } }
+            sets["${area.name}:arrive_by"] = local.take(100).map { q -> { arriveBy(library, q.copy(time = q.time + 3600), rounds) } }
+        }
+    }
+    val points = randomPoints(stops, 300, options.seed)
+    fun at(p: PointQuery) = Pair(Location.Point(p.oLat, p.oLon), Location.Point(p.dLat, p.dLon))
+    sets["address:forward"] = points.map { p -> { at(p).let { (o, d) -> library.getOptimizedPaths(o, d, p.time, maxRounds = rounds) } } }
+    sets["address:arrive_by"] = points.take(100).map { p ->
+        { at(p).let { (o, d) -> library.getOptimizedPathsArriveBy(o, d, p.time + 3600, maxRounds = rounds) } }
+    }
+    val school = schoolRoutes(options.data)
+    if (school.isNotEmpty()) {
+        sets["no-school:forward"] = random.take(200).map { q ->
+            { library.getOptimizedPaths(q.origins, q.destinations, q.time, maxRounds = rounds, blockedRouteIds = school) }
+        }
+    }
+    val perQuery = sets.mapValues { (_, calls) -> calls.map { sha(canonical(it())) } }
+    return Pair(perQuery.mapValues { (_, hashes) -> sha(hashes.joinToString("")) }, perQuery)
 }
 
 /**

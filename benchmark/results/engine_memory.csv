@@ -1,0 +1,9 @@
+network,engine,golden,stops,trips,retained_heap_mb,cold_build_ms,warm_build_median_ms,smallest_heap,random_forward_p50_ms,random_forward_p95_ms,random_forward_p99_ms,random_arrive_by_p50_ms,random_arrive_by_p95_ms,random_arrive_by_p99_ms,lyon-local_forward_p50_ms,paris-local_forward_p50_ms
+metropole-lyon,2.2.0,same,9625,19976,8.6,122,37,160m,0.84,1.95,2.63,1.73,4.18,7.59,0.64,0.0
+metropole-lyon,2.4.0-SNAPSHOT,same,9625,19976,4.0,112,23,160m,0.96,2.27,3.34,1.95,4.78,8.98,0.73,0.0
+france-connexe,2.2.0,same,294130,481983,259.8,671,844,384m,22.0,104.95,147.61,31.94,116.43,155.12,8.32,17.51
+france-connexe,2.4.0-SNAPSHOT,same,294130,481983,120.0,632,464,224m,17.65,80.34,113.95,15.43,44.11,61.57,5.1,8.19
+france-complete,2.2.0,same,313419,489575,275.0,531,522,384m,10.22,43.24,57.19,14.7,48.94,60.83,5.53,8.88
+france-complete,2.4.0-SNAPSHOT,same,313419,489575,123.8,458,219,224m,9.22,37.26,49.43,13.74,42.0,54.3,5.29,8.44
+france-live-semaine,2.2.0,same,311406,487666,273.6,660,597,384m,11.09,52.59,75.62,16.07,56.3,72.85,5.55,8.97
+france-live-semaine,2.4.0-SNAPSHOT,same,311406,487666,123.3,426,227,224m,9.65,43.07,65.16,14.56,48.92,72.03,5.51,8.42

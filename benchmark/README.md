@@ -45,8 +45,9 @@ There are two data layers:
 | 8 | Long-distance layer, connected France | catalogue + `gtfs_bench/connected.py`, `connectivity.py` | done |
 | 9 | Address search in the explorer, and its cost | `gtfs_bench/explorer/geocode.py`, harness `--mode points` | done |
 | 10 | Every school line, with a switch | catalogue `scolaire` layer, `gtfs_bench/school.py`, explorer | done |
-| 11 | Feed horizon, three day types, daily refresh | `gtfs_bench/horizon.py`, `refresh.py`, `refresh.ps1` | in review |
-| 12–13 | Engine memory down to a 256 MB heap | raptor-kmp branch `perf/memory-256` | planned |
+| 11 | Feed horizon, three day types, daily refresh | `gtfs_bench/horizon.py`, `refresh.py`, `refresh.ps1` | done |
+| 12 | Engine memory, the network: 275 → 124 MB, fits 224m | raptor-kmp `perf/memory-256`, `gtfs_bench/engines.py` | in review |
+| 13 | Engine memory, search state and load peak | raptor-kmp `perf/memory-256` | planned |
 | 14 | Report update | `RESULTS.md`, `RESULTS.fr.md` | planned |
 
 ## Setup
@@ -240,6 +241,36 @@ Register-ScheduledTask -TaskName "raptor-gtfs-refresh" -Action $action -Trigger 
 
 The benchmark numbers stay those of the reference day (24 November); every result file
 from step 11 on says the date of the data it was measured on.
+
+## Engine memory: raptor-kmp on a phone-sized heap (steps 12–13)
+
+The work is in raptor-kmp itself (branch `perf/memory-256` of that repository, version
+`2.4.0-SNAPSHOT`); this side compares engine builds on the same networks:
+
+```bash
+python -m gtfs_bench.engines publish                          # ../raptor-kmp working copy -> ~/.m2
+python -m gtfs_bench.engines install 2.2.0                    # harness on Maven Central's 2.2.0
+python -m gtfs_bench.engines install 2.4.0-SNAPSHOT --local   # harness on the local build
+python -m gtfs_bench.engines compare 2.2.0 2.4.0-SNAPSHOT     # ~1 h
+```
+
+Each harness build lives in `data/tmp/engines/<version>/`; `build/install` keeps the default
+engine for the explorer. `-PraptorKmpLocal` adds `mavenLocal()` to the build's repositories
+(only then). raptor-kmp's build needs `-Pandroid.builtInKotlin=false -Pandroid.newDsl=false`
+with AGP 9 and an Android SDK (`ANDROID_HOME`, default `%LOCALAPPDATA%\Android\Sdk`).
+
+`compare` runs, on Lyon and three France networks:
+
+- **golden journeys** (harness `--mode golden`): every journey of 2,500 fixed queries (random
+  stop pairs forward and arrive-by, the Lyon and Paris local sets, addresses forward and
+  arrive-by, 200 searches without the school lines), hashed field by field. An optimization
+  must give the very same hashes;
+- the **retained heap** and the JVM's **class histogram** of the loaded network
+  (`results/engine/memory/histogram/`);
+- the **full timing run**, and the **smallest heap** (160m, 192m, 224m…) that loads the
+  network and answers 200 queries.
+
+Summary in `results/engine_memory.csv`; details in `results/engine/memory/`.
 
 ## Explorer: try the engine yourself
 

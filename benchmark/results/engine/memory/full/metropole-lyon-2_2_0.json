@@ -1,0 +1,277 @@
+{
+ "tier": "metropole-lyon",
+ "status": "ok",
+ "failedDuring": null,
+ "error": null,
+ "engineVersion": "2.2.0",
+ "java": "21.0.7+6-LTS",
+ "maxHeapMb": 2048,
+ "files": {
+  "stopsBytes": 947427,
+  "routesBytes": 1895386
+ },
+ "network": {
+  "stops": 9625,
+  "routes": 1490,
+  "trips": 19976,
+  "stopTimes": 426603,
+  "transfers": 42408,
+  "implicitTransferPairs": 16388,
+  "largestNameGroup": 21
+ },
+ "load": {
+  "coldReadMs": 11.524201,
+  "coldBuildMs": 121.827,
+  "warmBuildMs": [
+   46.138299,
+   37.404001,
+   28.7849
+  ],
+  "warmBuildMedianMs": 37.404001
+ },
+ "heap": {
+  "retainedMb": 8.640304565429688,
+  "peakMb": 39.035911560058594
+ },
+ "querySets": [
+  {
+   "name": "random",
+   "direction": "forward",
+   "queries": 1000,
+   "found": 497,
+   "latencyMs": {
+    "mean": 0.8201450330000006,
+    "p50": 0.841801,
+    "p90": 1.6937,
+    "p95": 1.9493,
+    "p99": 2.6275,
+    "max": 3.326
+   },
+   "medianDurationMin": 109.0,
+   "medianTransitLegs": 4.0,
+   "note": null
+  },
+  {
+   "name": "random",
+   "direction": "arrive_by",
+   "queries": 1000,
+   "found": 281,
+   "latencyMs": {
+    "mean": 1.995173615000001,
+    "p50": 1.726699,
+    "p90": 3.644999,
+    "p95": 4.176901,
+    "p99": 7.589801,
+    "max": 16.663901
+   },
+   "medianDurationMin": 58.0,
+   "medianTransitLegs": 4.0,
+   "note": null
+  },
+  {
+   "name": "lyon-local",
+   "direction": "forward",
+   "queries": 300,
+   "found": 290,
+   "latencyMs": {
+    "mean": 0.7504699966666669,
+    "p50": 0.642,
+    "p90": 1.3496,
+    "p95": 1.4915,
+    "p99": 2.7725,
+    "max": 4.5155
+   },
+   "medianDurationMin": 33.916666666666664,
+   "medianTransitLegs": 3.0,
+   "note": null
+  },
+  {
+   "name": "lyon-local",
+   "direction": "arrive_by",
+   "queries": 300,
+   "found": 289,
+   "latencyMs": {
+    "mean": 2.460441683333333,
+    "p50": 2.0687,
+    "p90": 4.1326,
+    "p95": 5.028701,
+    "p99": 14.2383,
+    "max": 16.747401
+   },
+   "medianDurationMin": 29.133333333333333,
+   "medianTransitLegs": 3.0,
+   "note": null
+  },
+  {
+   "name": "paris-local",
+   "direction": "forward",
+   "queries": 0,
+   "found": 0,
+   "latencyMs": {
+    "mean": 0.0,
+    "p50": 0.0,
+    "p90": 0.0,
+    "p95": 0.0,
+    "p99": 0.0,
+    "max": 0.0
+   },
+   "medianDurationMin": null,
+   "medianTransitLegs": null,
+   "note": "area not covered by this tier"
+  }
+ ],
+ "scenarios": [
+  {
+   "name": "Bellecour -> Part-Dieu",
+   "kind": "intra-metropole",
+   "originStops": 16,
+   "destinationStops": 22,
+   "departure": "08:00",
+   "found": true,
+   "latencyMs": 0.365,
+   "arrival": "08:10",
+   "durationMin": 10,
+   "transitLegs": 2,
+   "routes": [
+    "D",
+    "B"
+   ],
+   "note": null
+  },
+  {
+   "name": "Chatelet -> La Defense",
+   "kind": "intra-metropole",
+   "originStops": 0,
+   "destinationStops": 0,
+   "departure": "08:00",
+   "found": false,
+   "latencyMs": null,
+   "arrival": null,
+   "durationMin": null,
+   "transitLegs": null,
+   "routes": [],
+   "note": "not covered by this tier"
+  },
+  {
+   "name": "Gare du Nord -> Montparnasse",
+   "kind": "intra-metropole",
+   "originStops": 0,
+   "destinationStops": 0,
+   "departure": "08:00",
+   "found": false,
+   "latencyMs": null,
+   "arrival": null,
+   "durationMin": null,
+   "transitLegs": null,
+   "routes": [],
+   "note": "not covered by this tier"
+  },
+  {
+   "name": "Vieux-Port -> Aix-en-Provence",
+   "kind": "intra-metropole",
+   "originStops": 0,
+   "destinationStops": 0,
+   "departure": "08:00",
+   "found": false,
+   "latencyMs": null,
+   "arrival": null,
+   "durationMin": null,
+   "transitLegs": null,
+   "routes": [],
+   "note": "not covered by this tier"
+  },
+  {
+   "name": "Lyon Part-Dieu -> Grenoble",
+   "kind": "intra-region",
+   "originStops": 24,
+   "destinationStops": 0,
+   "departure": "08:00",
+   "found": false,
+   "latencyMs": null,
+   "arrival": null,
+   "durationMin": null,
+   "transitLegs": null,
+   "routes": [],
+   "note": "not covered by this tier"
+  },
+  {
+   "name": "Toulouse -> Montpellier",
+   "kind": "intra-region",
+   "originStops": 0,
+   "destinationStops": 0,
+   "departure": "08:00",
+   "found": false,
+   "latencyMs": null,
+   "arrival": null,
+   "durationMin": null,
+   "transitLegs": null,
+   "routes": [],
+   "note": "not covered by this tier"
+  },
+  {
+   "name": "Lyon Part-Dieu -> Paris Gare de Lyon",
+   "kind": "long-distance",
+   "originStops": 24,
+   "destinationStops": 0,
+   "departure": "07:00",
+   "found": false,
+   "latencyMs": null,
+   "arrival": null,
+   "durationMin": null,
+   "transitLegs": null,
+   "routes": [],
+   "note": "not covered by this tier"
+  },
+  {
+   "name": "Brest -> Strasbourg",
+   "kind": "long-distance",
+   "originStops": 0,
+   "destinationStops": 0,
+   "departure": "07:00",
+   "found": false,
+   "latencyMs": null,
+   "arrival": null,
+   "durationMin": null,
+   "transitLegs": null,
+   "routes": [],
+   "note": "not covered by this tier"
+  },
+  {
+   "name": "Lille Flandres -> Marseille St-Charles",
+   "kind": "long-distance",
+   "originStops": 0,
+   "destinationStops": 0,
+   "departure": "07:00",
+   "found": false,
+   "latencyMs": null,
+   "arrival": null,
+   "durationMin": null,
+   "transitLegs": null,
+   "routes": [],
+   "note": "not covered by this tier"
+  },
+  {
+   "name": "Bordeaux St-Jean -> Nice-Ville",
+   "kind": "long-distance",
+   "originStops": 0,
+   "destinationStops": 0,
+   "departure": "07:00",
+   "found": false,
+   "latencyMs": null,
+   "arrival": null,
+   "durationMin": null,
+   "transitLegs": null,
+   "routes": [],
+   "note": "not covered by this tier"
+  }
+ ],
+ "extras": {},
+ "golden": {},
+ "goldenQueries": {},
+ "process": {
+  "xmx": "2g",
+  "exit_code": 0,
+  "seconds": 7.8,
+  "peak_working_set_mb": 120
+ }
+}
