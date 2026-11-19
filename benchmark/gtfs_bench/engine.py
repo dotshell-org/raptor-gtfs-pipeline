@@ -187,7 +187,8 @@ def write_tables(reports: list[dict]) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m gtfs_bench.engine", description=__doc__.splitlines()[0])
     parser.add_argument("--tiers", help="comma-separated tier keys (default: every converted tier)")
-    parser.add_argument("--xmx", default="12g", help="heap ceiling of the full runs")
+    from .settings import load
+    parser.add_argument("--xmx", default=load().engine.benchmark_xmx, help="heap ceiling of the full runs")
     parser.add_argument("--java", help="java executable (default: $JAVA_HOME, then PATH)")
     parser.add_argument("--no-sweep", action="store_true", help="skip the heap-ceiling sweep")
     parser.add_argument("--addresses", action="store_true",

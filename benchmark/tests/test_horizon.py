@@ -109,7 +109,7 @@ def quiet_refresh(tmp_path, monkeypatch):
     monkeypatch.setattr(refresh, "SIGNATURES", tmp_path / "signatures.json")
     monkeypatch.setattr(refresh, "content_signature", lambda path: state["signatures"].get(path.stem, ""))
     monkeypatch.setattr(refresh, "download_all", lambda rows, progress: state["downloads"])
-    monkeypatch.setattr(refresh, "make_plan", lambda rows, today: (state["plan"], None, None))
+    monkeypatch.setattr(refresh, "make_plan", lambda rows, today, *limits: (state["plan"], None, None))
     monkeypatch.setattr(refresh, "write_results", lambda *a: None)
 
     def build(result, rows, java=None, progress=print):

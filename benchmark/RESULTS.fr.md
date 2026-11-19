@@ -16,15 +16,21 @@ demi-seconde, le tient en 257 Mo et atteint dans la journée chacune des 95 pré
 depuis Paris.
 
 - **Sur un serveur, il passe tous les objectifs fixés**, avec une large marge.
-- **Sur un téléphone, la mémoire et le chargement passent**, à condition que l'appli
-  demande un grand tas.
-  - Les trajets du quotidien sont rapides aussi : la moitié des trajets dans Lyon ou dans
-    Paris prennent moins de 8 ms.
-  - Les 5 % de recherches les plus lentes prennent 40 à 45 ms, pour un objectif de 30 ms :
-    cet objectif n'est donc pas atteint. Ce sont les longues recherches à travers le pays
-    et les recherches « arriver avant ».
-  - La correction relève du moteur (voir
+- **Sur un téléphone, la mémoire et le chargement passent**, et depuis les étapes 12–13
+  sans demander de grand tas : avec raptor-kmp `2.4.0-SNAPSHOT` (branche
+  `perf/memory-256`), la France occupe 124 Mo au lieu de 257, et se charge et répond dans
+  un tas de 224 Mo.
+  - Les trajets du quotidien sont rapides : la moitié des trajets dans Lyon ou dans Paris
+    prennent moins de 8 ms.
+  - Les 5 % de recherches les plus lentes prennent environ 36 ms, pour un objectif de
+    30 ms : c'est proche, mais toujours pas atteint. Ce sont les longues recherches à
+    travers le pays et les recherches « arriver avant » (voir
     [Ce qui ralentit une recherche](#ce-qui-ralentit-une-recherche)).
+
+Les étapes 9 à 13 ont ensuite ajouté ce dont une appli a besoin autour : la recherche par
+adresse, toutes les lignes scolaires avec un interrupteur, des données qui gardent des
+semaines d'avance grâce à une mise à jour quotidienne, et le travail sur le moteur. Tout
+est raconté dans [Après le premier verdict](#après-le-premier-verdict-étapes-913).
 
 ![De Paris à chaque préfecture](results/reachability.png)
 
@@ -34,17 +40,18 @@ ne perd plus de courses. À droite : avec la couche longue distance.*
 
 ### En un coup d'œil
 
-France connexe, JVM de bureau, quatre exécutions. Les objectifs ont été fixés avant de
-mesurer.
+France connexe, JVM de bureau, quatre exécutions ; la dernière colonne est la France
+complète (avec toutes les lignes scolaires) sur le moteur des étapes 12–13. Les objectifs
+ont été fixés avant de mesurer.
 
-| | Mesuré | Objectif téléphone | Objectif serveur |
-|---|---|---|---|
-| Chargement du réseau | 0,49–0,57 s | ≤ 3 s ✅ | — |
-| Mémoire occupée une fois chargé | 257 Mo | ≤ 512 Mo ✅ (avec `largeHeap`) | ≤ 4 Go ✅ |
-| Plus petit tas qui permet de le charger | 384 Mo (échec à 320 Mo) | | |
-| Un trajet dans Lyon / dans Paris, cas typique (médiane) | 4,6–5,0 ms / 7,6–7,9 ms | | |
-| 5 % de recherches les plus lentes (p95) | 38–46 ms | ≤ 30 ms ❌ | ≤ 50 ms ✅ |
-| 1 % de recherches les plus lentes (p99) | 115–123 ms | — | ≤ 200 ms ✅ |
+| | raptor-kmp 2.2.0 | Objectif téléphone | Objectif serveur | 2.4.0-SNAPSHOT |
+|---|---|---|---|---|
+| Chargement du réseau | 0,49–0,57 s | ≤ 3 s ✅ | — | 0,46 s |
+| Mémoire occupée une fois chargé | 257 Mo | ≤ 512 Mo ✅ (avec `largeHeap`) | ≤ 4 Go ✅ | **124 Mo** |
+| Plus petit tas qui permet de le charger | 384 Mo (échec à 320 Mo) | | | **224 Mo** |
+| Un trajet dans Lyon / dans Paris, cas typique (médiane) | 4,6–5,0 ms / 7,6–7,9 ms | | | 5,3 / 8,4 ms |
+| 5 % de recherches les plus lentes (p95) | 38–46 ms | ≤ 30 ms ❌ | ≤ 50 ms ✅ | 36 ms ❌ |
+| 1 % de recherches les plus lentes (p99) | 115–123 ms | — | ≤ 200 ms ✅ | 49 ms |
 
 **Comment lire ce tableau :**
 
@@ -75,7 +82,8 @@ Le catalogue, avec la raison de chaque source retenue ou écartée, est dans
 
 - **L'outre-mer.** Il n'est pas relié à la métropole et vit sur d'autres fuseaux horaires.
 - **Le transport à la demande.** Il n'a pas d'horaires fixes sur lesquels calculer.
-- **Les réseaux uniquement scolaires.**
+- **Les réseaux uniquement scolaires**, dans le premier verdict. L'étape 10 les ajoute
+  (France complète), avec un interrupteur pour écarter toutes les lignes scolaires.
 - **Une poignée de réseaux dont les données ouvertes ont expiré ou disparu :** Ruban
   (Bourgoin-Jallieu), TAC, Ogalo, EVA'D, Mobilité en Velay et le chemin de fer corse.
 - **Eurostar et les ferries transmanche.** Ils n'apportent rien à l'intérieur de la
@@ -195,8 +203,8 @@ avec un tas de 384 Mo, mais pas avec 320 Mo.
 
 - Sans `largeHeap`, beaucoup de téléphones Android donnent 192–256 Mo à une appli, ce qui
   ne suffit pas.
-- Construire le réseau directement depuis le fichier, sans objets intermédiaires, pourrait
-  faire baisser ce pic.
+- C'était raptor-kmp 2.2.0 : les étapes 12–13 divisent le réseau par deux et abaissent le
+  pic, voir [Un moteur à la taille d'un téléphone](#un-moteur-à-la-taille-dun-téléphone).
 
 ## Le pipeline
 
@@ -211,15 +219,166 @@ beaucoup ce besoin.
 | Pic de mémoire | 9,3 Go | 9,6 Go |
 | Sortie (`stops.bin` + `routes.bin`) | 64 Mo | 76 Mo |
 
+## Après le premier verdict (étapes 9–13)
+
+### Chercher depuis une adresse
+
+La console cherche les adresses comme Pelo : le géocodeur public Photon, puis le point
+lui-même transmis à raptor-kmp (`Location.Point`). Le moteur marche jusqu'à tous les
+arrêts à moins de 500 m, chacun avec sa propre marche, et propose le trajet tout à pied
+sous 1 km. S'il ne trouve rien, il recommence en marchant jusqu'à 6 km.
+
+**Ce que ça coûte : presque rien.** Le moteur construit une grille des arrêts à la
+première recherche par adresse : 7 Mo sur la France. Ensuite, une recherche depuis une
+adresse coûte à peu près ce que coûte une recherche depuis tous les arrêts autour. Elle
+est même souvent *plus rapide* qu'une recherche depuis le seul arrêt le plus proche :
+partir du bon arrêt du quartier raccourcit la recherche.
+
+| France connexe, recherche médiane | Paris (300 trajets) | Lyon (300 trajets) | À travers la France (1 000) |
+|---|---:|---:|---:|
+| Depuis l'arrêt le plus proche | 21,7 ms | 8,0 ms | 13,4 ms, 186 trouvés |
+| Depuis tous les arrêts à 500 m | 9,8 ms | 7,5 ms | 27,0 ms, 283 trouvés |
+| **Depuis l'adresse** | **11,0 ms** | **8,3 ms** | **26,0 ms, 281 trouvés** |
+
+À travers la France, la recherche par adresse est plus lente parce qu'elle trouve moitié
+plus de trajets. Trouver l'adresse est une requête web (0,1 à 0,3 s) qui ne passe jamais
+par le moteur. → `results/address_queries.csv`
+
+### Toutes les lignes scolaires, avec un interrupteur
+
+Les 18 sources qui ne transportent que des scolaires rejoignent une troisième couche du
+catalogue, lue par un réseau de plus, la **France complète**. Une ligne compte comme
+scolaire par l'une de cinq règles :
+
+- sa source est entièrement scolaire ;
+- son type GTFS le dit (712/713, comme les JD des TCL) ;
+- son nom le dit (« ligne scolaire ») ;
+- la convention propre au réseau (Rennes : Ts30…) ;
+- elle dessert un collège, un lycée ou une école, et roule au plus 6 fois dans la journée.
+
+Une ligne qui finit simplement à un lycée roule toute la journée et reste une ligne
+normale.
+
+| | |
+|---|---|
+| Lignes scolaires de la France complète | 7 628 (2 427 par source scolaire, 3 220 par type, 1 526 « peu de courses », 417 par nom, 38 par convention) |
+| Leurs courses le 24 novembre | 21 329, soit 4,3 % de la journée |
+| France complète | 313 419 arrêts, 489 575 courses, 95 / 95 préfectures |
+
+L'interrupteur « lignes scolaires » de l'explorateur les écarte d'une recherche. Un cas
+réel : Saint-Jeannet → Logis du Pin à 06:40 prend la ligne scolaire 23S, en 58 min ; sans
+les lignes scolaires, il n'y a aucun trajet, même en marchant 6 km.
+
+Écarter les scolaires ajoute 3 à 4 ms par recherche (médiane à Lyon : 5,0 → 8,7 ms). C'est
+que raptor-kmp compare chaque ligne à la liste à chaque recherche : une correction à faire
+dans le moteur. → `results/school_routes.csv`, `school_switch.csv`
+
+### Des données qui gardent de l'avance
+
+raptor-kmp n'a pas de calendrier : un réseau, ce sont les horaires d'un jour. Pelo sert
+TCL, dont le fichier couvre des mois, avec quelques jours types. Pour la France, la
+question est de savoir jusqu'où *tous* les producteurs publient. La réponse : des
+semaines, pas des mois.
+
+![Jusqu'où les flux publient leurs horaires](results/feed_horizon.png)
+
+Le 19 novembre 2026, tous les flux qui comptent avaient des horaires jusqu'au
+**18 décembre**, dernier jour d'IDFM (27 % des courses ; IDFM publie environ un mois à
+l'avance). Six petits flux, qui pèsent 0,28 % des courses, s'arrêtent avant :
+
+- deux navettes de ski entre deux saisons ;
+- Pastel ;
+- Bourg-Saint-Maurice ;
+- Trenitalia ;
+- Pays de Gex.
+
+Après le 18 décembre, la moitié des courses disparaît d'un coup.
+
+La fenêtre **glisse** donc. `python -m gtfs_bench.refresh`, prévu pour tourner chaque
+nuit :
+
+- télécharge ce qui a changé. Plusieurs API refabriquent un zip identique à chaque
+  requête : un changement, c'est donc un changement des fichiers à l'intérieur du zip ;
+- signale les nouveaux fichiers du PAN pour les flux qui s'arrêtent bientôt ;
+- recalcule la fenêtre ;
+- ne reconstruit le réseau que si besoin, en une dizaine de minutes.
+
+Le réseau, **france-live**, contient trois jours types : les horaires d'un mardi, d'un
+samedi et d'un dimanche. Chaque date prend son jour type ; les jours fériés prennent celui
+du dimanche.
+
+| france-live, données du 19 nov. | semaine | samedi | dimanche |
+|---|---:|---:|---:|
+| Courses | 487 666 | 316 621 | 151 732 |
+| Mémoire, raptor-kmp 2.2.0 | 274 Mo | 236 Mo | 212 Mo |
+| Mémoire, 2.4.0-SNAPSHOT | 123 Mo | 95 Mo | 73 Mo |
+
+### Un moteur à la taille d'un téléphone
+
+Le relevé des objets en mémoire d'une France chargée montrait où partait la mémoire de la
+2.2.0 :
+
+- chaque correspondance à pied était un objet, dans une liste par arrêt, puis recopiée
+  deux fois dans des tableaux ;
+- une table traduisait chaque numéro d'arrêt en position, alors que c'est déjà la même
+  chose ;
+- les groupes d'arrêts de même nom étaient rangés dans des tables de listes d'entiers
+  « boxés ».
+
+Les étapes 12 et 13 ont réécrit cela dans raptor-kmp (branche `perf/memory-256`, version
+`2.4.0-SNAPSHOT`), sans changer son API :
+
+- correspondances, lignes par arrêt et groupes de même nom deviennent des tableaux plats,
+  que la recherche lit directement ;
+- les correspondances lues dans le fichier servent telles quelles, dans le tableau même
+  que le chargeur a rempli ;
+- une seule période construite à la fois, et les octets des fichiers libérés dès qu'ils
+  sont lus ;
+- un état de recherche de 20 octets par arrêt et par tour au lieu de 32.
+
+| | 2.2.0 | 2.4.0-SNAPSHOT |
+|---|---:|---:|
+| France complète, mémoire occupée | 275 Mo | **124 Mo** |
+| France complète, plus petit tas | 384 Mo | **224 Mo** |
+| France connexe, plus petit tas | 384 Mo | **192 Mo** |
+| Les trois jours types l'un après l'autre | ne se charge pas dans 256 Mo | **les trois dans 224 Mo** |
+| Recherches au hasard, p95 (complète) | 42 ms | 36 ms |
+
+**Les trajets sont identiques.** On a fait 2 500 recherches fixes (sens normal,
+arriver-avant, depuis des adresses, sans lignes scolaires), sur Lyon et trois réseaux
+France. Chaque champ de chaque trajet donne le même hachage avec les deux moteurs.
+→ `results/engine_memory.csv`, `engine_periods.csv`
+
+### La console
+
+Tout se pilote depuis une seule application de terminal,
+`python -m gtfs_bench.console` :
+
+- l'itinéraire et la carte ;
+- le catalogue, modifiable, avec des copies de sauvegarde ;
+- les réseaux convertis ;
+- chaque étape du notebook et les mesures, lancées comme des actions dont on voit la
+  sortie ;
+- les paramètres, les résultats et le guide.
+
+Le guide, avec des captures d'écran : [`docs/guide-console.pdf`](docs/guide-console.pdf).
+
 ## Limites
 
 - **Aucun téléphone n'a été mesuré.** Les chiffres de mémoire valent pour Android,
-  puisque les mêmes données y sont allouées. Pas les temps.
-- **Un seul jour.**
-  - Tout porte sur le mardi 24 novembre 2026.
+  puisque les mêmes données y sont allouées. Pas les temps. ART range aussi autrement les
+  noms accentués et les en-têtes d'objets : les 32 Mo de marge sous 256 Mo devraient
+  suffire, mais ce n'est pas mesuré.
+- **Un horaire par jour type.**
+  - Un jour de semaine prend les horaires du mardi : une course qui ne roule que le
+    mercredi ou le vendredi manque.
   - Un trajet qui demande deux jours (un ferry de nuit, puis une correspondance le matin)
     est introuvable.
-  - Les week-ends et les vacances comptent moins de courses.
+  - La fenêtre couvre la période que tous les producteurs importants ont publiée : des
+    semaines, jamais des mois.
+- **Les lignes scolaires sont repérées par des règles**, pas déclarées par les
+  producteurs : quelques-unes peuvent manquer ou être mal marquées
+  (`results/school_routes.csv` les liste toutes, avec la règle appliquée).
 - **Pas de règles de réservation.** Le pipeline ignore les restrictions de montée et de
   descente. FlixBus et BlaBlaCar n'en déclarent aucune, donc rien n'est perdu de ce côté.
   Un car « à réservation » est traité comme n'importe quel autre.
@@ -231,15 +390,19 @@ beaucoup ce besoin.
 
 **Dans raptor-kmp :**
 
-1. **Limiter à une distance les liens entre arrêts de même nom**, ou les abandonner au
-   profit de `transfers.txt`. Plus aucun réseau fusionné n'aurait alors besoin du
-   contournement par renommage.
+1. **Publier la 2.4.0** depuis `perf/memory-256` : réseau à plat, une période à la fois,
+   état de recherche plus petit. C'est fait, avec des trajets identiques. Pelo pourra alors
+   utiliser `RaptorLibrary(periods, keepAllPeriods = false)` pour ses jours types.
 2. **Ne remettre à zéro que ce que la recherche précédente a touché.**
    - Un trajet urbain sur la France reviendrait alors près de son coût sur la ville seule.
    - C'est le changement qui devrait faire passer les téléphones sous 30 ms : une
      estimation, à mesurer une fois fait.
-3. **Construire le réseau sans objets intermédiaires**, pour charger la France avec moins
-   de 384 Mo.
+3. **Construire une seule fois le filtre des lignes écartées**, au lieu de tester chaque
+   ligne à chaque recherche : l'interrupteur des lignes scolaires ne coûterait alors plus
+   rien.
+4. **Limiter à une distance les liens entre arrêts de même nom**, ou les abandonner au
+   profit de `transfers.txt`. Plus aucun réseau fusionné n'aurait alors besoin du
+   contournement par renommage.
 
 **Dans le pipeline :**
 
@@ -249,8 +412,11 @@ beaucoup ce besoin.
 2. **Ne lire que le jour converti**, pour faire passer la France bien sous 10 Go.
 3. Fixer le démon Gradle sur le JDK 21 : Kotlin 2.1.0 échoue avec le JDK 25.
 
-**Dans le benchmark :** mesurer sur un vrai téléphone, avec la France connexe et
-`largeHeap`.
+**Dans le benchmark :**
+
+- mesurer sur un vrai téléphone, avec france-live et raptor-kmp 2.4.0 ;
+- planifier la mise à jour quotidienne (console, Actions → « Planifier la mise à jour
+  quotidienne »).
 
 ## Méthode
 
@@ -409,8 +575,13 @@ cd notebooks && ../.venv/Scripts/python -m jupyter nbconvert --to notebook --exe
 
 ```bash
 .venv/Scripts/python -m gtfs_bench.variants   # arrêts de même nom, facultatif
-.venv/Scripts/python -m gtfs_bench.connected  # les trois réseaux France (étape 8), ~20 min
+.venv/Scripts/python -m gtfs_bench.connected  # les réseaux France (étapes 8 et 10), ~25 min chacun
+.venv/Scripts/python -m gtfs_bench.engine --addresses      # étape 9
+.venv/Scripts/python -m gtfs_bench.refresh                 # étape 11 : france-live et la fenêtre
+.venv/Scripts/python -m gtfs_bench.engines compare 2.2.0 2.4.0-SNAPSHOT   # étapes 12-13, voir le README
 ```
+
+Ou tout depuis la console : `.venv/Scripts/python -m gtfs_bench.console`, onglet Actions.
 
 Les sources changent tous les jours. Une nouvelle exécution choisit un autre jour de
 référence et d'autres versions, et `results/feeds_used.csv` garde la trace des versions

@@ -319,8 +319,10 @@ def included_rows(layers: tuple[str, ...] = LAYERS) -> list[dict]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m gtfs_bench.horizon", description=__doc__.splitlines()[0])
     parser.add_argument("--today", help="YYYY-MM-DD (default: today)")
-    parser.add_argument("--max-feed-share", type=float, default=MAX_FEED_SHARE)
-    parser.add_argument("--max-lost-share", type=float, default=MAX_LOST_SHARE)
+    from .settings import load
+    live = load().live
+    parser.add_argument("--max-feed-share", type=float, default=live.max_feed_share)
+    parser.add_argument("--max-lost-share", type=float, default=live.max_lost_share)
     args = parser.parse_args(argv)
     today = dt.date.fromisoformat(args.today) if args.today else dt.date.today()
     result, table, days = plan(included_rows(), today, args.max_feed_share, args.max_lost_share, progress=print)

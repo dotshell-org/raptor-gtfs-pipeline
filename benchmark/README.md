@@ -47,8 +47,8 @@ There are two data layers:
 | 10 | Every school line, with a switch | catalogue `scolaire` layer, `gtfs_bench/school.py`, explorer | done |
 | 11 | Feed horizon, three day types, daily refresh | `gtfs_bench/horizon.py`, `refresh.py`, `refresh.ps1` | done |
 | 12 | Engine memory, the network: 275 → 124 MB, fits 224m | raptor-kmp `perf/memory-256`, `gtfs_bench/engines.py` | done |
-| 13 | Engine memory, search state, load peak, one day type at a time: 3 day types under 224m | raptor-kmp `perf/memory-256` | in review |
-| 14 | Report update | `RESULTS.md`, `RESULTS.fr.md` | planned |
+| 13 | Engine memory, search state, load peak, one day type at a time: 3 day types under 224m | raptor-kmp `perf/memory-256` | done |
+| 14 | Console with every step and setting, its PDF guide, report update | `gtfs_bench/console.py`, `docs/`, `RESULTS*.md` | in review |
 
 ## Setup
 
@@ -281,6 +281,27 @@ With raptor-kmp `2.4.0-SNAPSHOT` (journeys identical to 2.2.0 everywhere): Franc
 holds 124 MB instead of 275 and fits -Xmx224m instead of 384m; France connexe fits 192m;
 the three day types of the live network run one after the other under 224m (2.2.0 cannot
 build the first under 256m). Queries are 10 to 25 % faster.
+
+## The console: everything from one terminal (step 14)
+
+```bash
+.venv/Scripts/python -m gtfs_bench.console
+```
+
+A Textual app with seven tabs (F1–F7): **Itinéraire** (the explorer below, with a map you
+can zoom and pan, city and stop names, a scale and a legend), **Catalogue** (browse, filter
+and edit `catalog/gtfs_france.csv`, with a backup at each save, and download a feed),
+**Réseaux** (every converted network, opened in the itinerary in one click), **Actions**
+(every step of the notebook and every measurement as a command with live output: daily
+refresh, horizon, scheduled task, downloads, catalogue check, conversion, France variants,
+school lines, the whole notebook, engine benchmarks, engine comparison, tests, this
+guide), **Paramètres** (`gtfs_bench/settings.py`, saved to `settings.json`, read by the
+modules, the notebook's configuration cell and the engine), **Résultats** (reports and
+every CSV of `results/`) and **Aide**.
+
+The user guide, in French with screenshots, is [`docs/guide-console.pdf`](docs/guide-console.pdf)
+(source `docs/GUIDE.md`, rebuilt by `python -m gtfs_bench.guide`: screenshots of the real
+console, HTML, then PDF through Microsoft Edge).
 
 ## Explorer: try the engine yourself
 

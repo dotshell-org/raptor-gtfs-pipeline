@@ -45,6 +45,7 @@ from .download import download_all, read_manifest
 from .engine import run_harness, tier_dir
 from .merge import MergeParams, Tier, merge_tier
 from .normalize import Window, normalize_all
+from .settings import load as load_settings
 from .transfers import StationParams, TransferParams
 
 
@@ -97,13 +98,18 @@ def prepare(rows: list[dict], window: Window, progress=print) -> list[dict]:
     return [r for r in rows if r["feed_id"] not in errors and manifest.get(r["feed_id"]) and manifest[r["feed_id"]].ok]
 
 
-def build(variant: Variant, reference: dt.date, java: str | None = None, pipeline_xmx: str = "12g",
-          transfers: TransferParams = TransferParams(), progress=print) -> dict:
-    """Merge and convert one variant. Returns the merge report and the conversion, as dicts."""
+def build(variant: Variant, reference: dt.date, java: str | None = None, pipeline_xmx: str | None = None,
+          transfers: TransferParams | None = None, progress=print) -> dict:
+    """Merge and convert one variant. Returns the merge report and the conversion, as dicts.
+    Parameters not given come from settings.json (gtfs_bench.settings)."""
+    settings = load_settings()
+    pipeline_xmx = pipeline_xmx or settings.engine.pipeline_xmx
     rows = prepare(rows_for(variant), Window.week_of(reference), progress)
     tier = Tier(variant.key, "france", variant.label, tuple(rows), area_code="mainland")
-    params = MergeParams(reference_date=reference, transfers=transfers, split_patterns=variant.split_patterns,
-                         stations=variant.stations)
+    params = MergeParams(reference_date=reference, transfers=transfers or settings.merge.transfer_params(),
+                         split_patterns=variant.split_patterns,
+                         stations=settings.merge.station_params() if variant.stations is not None else None,
+                         name_radius_m=settings.merge.name_radius_m, memory_limit=settings.merge.duckdb_memory)
     report = merge_tier(tier, params, out_dir=MERGED_DIR / "variants", progress=progress)
     profile = write_profile(reference, DATA_DIR / "profiles" / "bench.yaml")
     conversion = convert_tier(variant.zip_path, RAPTOR_DIR / variant.key, profile, pipeline_xmx, java)
@@ -117,7 +123,8 @@ def build(variant: Variant, reference: dt.date, java: str | None = None, pipelin
 def tag_school(variant: Variant, reference: dt.date, rows: list[dict] | None = None, progress=print) -> dict:
     """The variant's school lines: school_routes.json for the engine, and for the variant with
     the school layer, the list to review (results/school_routes.csv, school_feeds.csv)."""
-    lines = school_lines.school_routes(rows if rows is not None else rows_for(variant), reference)
+    lines = school_lines.school_routes(rows if rows is not None else rows_for(variant), reference,
+                                       few_runs=load_settings().school.few_runs)
     route_ids, names = school_lines.engine_route_ids(variant.zip_path, set(lines.loc[lines["rule"].notna(), "route_id"]))
     school_lines.write_engine_file(variant.data_dir, route_ids, lines, reference)
     if "scolaire" in variant.layers:

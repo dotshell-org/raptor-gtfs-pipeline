@@ -38,7 +38,7 @@ from .convert import DATA_DIR, MERGED_DIR, RAPTOR_DIR, convert_tier, write_day_t
 from .download import RAW_DIR, download_all, read_manifest, write_manifest
 from .horizon import LAYERS, Plan, plan as make_plan, write_results
 from .merge import MergeParams, Tier, merge_tier
-from .transfers import StationParams, TransferParams
+from .settings import load as load_settings
 
 LIVE_KEY = "france-live"
 LIVE_DIR = RAPTOR_DIR / LIVE_KEY
@@ -75,10 +75,11 @@ def live_rows() -> list[dict]:
     return [r for r in read_catalog() if r["include"] and r["layer"] in LAYERS]
 
 
-def successors(rows: list[dict], table, today: dt.date, candidates: list[dict] | None = None) -> list[dict]:
-    """Valid PAN resources, not in the catalogue, of the datasets whose feed stops within SOON_DAYS."""
+def successors(rows: list[dict], table, today: dt.date, candidates: list[dict] | None = None,
+               soon_days: int = SOON_DAYS) -> list[dict]:
+    """Valid PAN resources, not in the catalogue, of the datasets whose feed stops within soon_days."""
     soon = {r.feed_id: r.last_day.date() for r in table.itertuples()
-            if r.first_week_trips > 0 and r.last_day.date() <= today + dt.timedelta(days=SOON_DAYS)}
+            if r.first_week_trips > 0 and r.last_day.date() <= today + dt.timedelta(days=soon_days)}
     by_feed = {r["feed_id"]: r for r in rows}
     catalogued = {str(r.get("pan_resource_id", "")) for r in read_catalog()}
     candidates = candidates if candidates is not None else fetch_candidates(today)
@@ -94,14 +95,19 @@ def successors(rows: list[dict], table, today: dt.date, candidates: list[dict] |
     return found
 
 
-def build_live(result: Plan, rows: list[dict], java: str | None = None, xmx: str = "12g", out_dir: Path = LIVE_DIR,
+def build_live(result: Plan, rows: list[dict], java: str | None = None, xmx: str | None = None, out_dir: Path = LIVE_DIR,
                progress=print) -> dict:
-    """Merge, convert with one period per day type, tag school lines; swap in at the end."""
+    """Merge, convert with one period per day type, tag school lines; swap in at the end.
+    Heap, transfer and station parameters come from settings.json (gtfs_bench.settings)."""
+    settings = load_settings()
+    xmx = xmx or settings.engine.pipeline_xmx
     days = {name: dt.date.fromisoformat(day) for name, day in result.days.items()}
     main = dt.date.fromisoformat(result.days["semaine"])
     ready = prepare(rows, result.normalization_window(), progress)
     tier = Tier(LIVE_KEY, "france", "France complète, fenêtre glissante", tuple(ready), area_code="mainland")
-    params = MergeParams(reference_date=main, transfers=TransferParams(), split_patterns=True, stations=StationParams())
+    params = MergeParams(reference_date=main, transfers=settings.merge.transfer_params(), split_patterns=True,
+                         stations=settings.merge.station_params(), name_radius_m=settings.merge.name_radius_m,
+                         memory_limit=settings.merge.duckdb_memory)
     report = merge_tier(tier, params, out_dir=MERGED_DIR / "variants", progress=progress)
     zip_path = MERGED_DIR / "variants" / "france" / f"{LIVE_KEY}.zip"
     building = out_dir.with_name(out_dir.name + ".new")
@@ -109,7 +115,7 @@ def build_live(result: Plan, rows: list[dict], java: str | None = None, xmx: str
     conversion = convert_tier(zip_path, building, profile, xmx, java, period="semaine")
     if conversion.status != "ok":
         raise RuntimeError(f"pipeline {conversion.status}: {conversion.error}")
-    lines = school_lines.school_routes(ready, main)
+    lines = school_lines.school_routes(ready, main, few_runs=settings.school.few_runs)
     route_ids, _ = school_lines.engine_route_ids(zip_path, set(lines.loc[lines["rule"].notna(), "route_id"]))
     for name in days:
         school_lines.write_engine_file(building / name, route_ids, lines, main)
@@ -155,7 +161,8 @@ def refresh(today: dt.date | None = None, force: bool = False, build: bool = Tru
              + f", {len(failed)} failed" + (f" ({', '.join(failed)})" if failed else "")
              + (f", {len(kept)} of them kept from their last good download" if kept else ""))
 
-    result, table, days = make_plan(rows, today)
+    live = load_settings().live
+    result, table, days = make_plan(rows, today, live.max_feed_share, live.max_lost_share)
     write_results(result, table, days)
     progress(f"window {result.start} → {result.end} (stops with {result.binding_feed}), days {result.days}, "
              f"{len(result.lost)} small feeds stop earlier")
@@ -163,7 +170,7 @@ def refresh(today: dt.date | None = None, force: bool = False, build: bool = Tru
     found = []
     if check_pan:
         try:
-            found = successors(rows, table, today)
+            found = successors(rows, table, today, soon_days=live.soon_days)
         except Exception as error:  # the PAN being down must not stop the refresh
             progress(f"PAN check failed: {error}")
     if check_pan and not found:

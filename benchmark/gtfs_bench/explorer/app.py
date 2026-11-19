@@ -27,12 +27,17 @@ from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.widgets import Button, Footer, Header, Input, Label, OptionList, Select, Static, Switch
+from textual.widgets import Button, Footer, Header, Input, Label, OptionList, Select, Static, Switch, TabbedContent, TabPane
 from textual.widgets.option_list import Option
 from textual.worker import get_current_worker
 
+from .. import settings as settings_module
+from ..convert import RAPTOR_DIR
+from ..engine import tier_dir
 from ..horizon import LABELS, Plan
 from . import mapview
+from .mapview import MapView
+from .panes import ActionsPane, CataloguePane, HelpPane, NetworksPane, ResultsPane, SettingsPane
 from .backend import EngineServer, Journey, RouteResult
 from .geocode import Address, Geocoder
 from .loading import SPINNER, LoadingView, seconds_text
@@ -90,7 +95,7 @@ def window_dates(plan: Plan, today: dt.date) -> list[dt.date]:
 def date_option(day: dt.date, plan: Plan) -> str:
     kind = plan.network_for(day) or "semaine"
     model = dt.date.fromisoformat(plan.days[kind])
-    return f"{short_day(day)} · {LABELS[kind]}" + ("" if model == day else f" (comme le {short_day(model)})")
+    return f"{short_day(day)} · {kind}" + ("" if model == day else f" (≈ {model.day:02d}/{model.month:02d})")
 
 
 def parse_changes(text: str) -> int | None:
@@ -125,6 +130,20 @@ def ms(value: float) -> str:
 
 def thousands(value: int) -> str:
     return f"{value:,}".replace(",", " ")
+
+
+class NoGeocoder:
+    """Address search switched off in the settings: no address is ever suggested."""
+
+    def search(self, text, near=None, limit=6):
+        return []
+
+
+#: What the console calls each network.
+NETWORK_NAMES = {"france": "France métropolitaine", "france-connexe": "France connexe (TGV, Intercités, cars, ferries)",
+                 "france-patterns": "France, une ligne par desserte",
+                 "france-complete": "France complète (connexe + transport scolaire)",
+                 "france-live": "France complète, données à jour"}
 
 
 def km(meters: float | None) -> str:
@@ -176,9 +195,10 @@ def legs_table(journey: Journey) -> Table:
 
 
 class Explorer(App):
-    TITLE = "raptor-kmp · explorateur"
+    TITLE = "raptor-kmp · console du benchmark France"
     CSS = """
-    Screen { layout: horizontal; }
+    #tabs { height: 1fr; }
+    #route { layout: horizontal; height: 1fr; }
     #left { width: 52; padding: 0 1; border-right: solid $panel-lighten-2; }
     #right { padding: 0 1; }
     .label { margin-top: 1; color: $text-muted; }
@@ -204,6 +224,13 @@ class Explorer(App):
         Binding("ctrl+t", "zoom", "Zoom carte", priority=True),
         Binding("ctrl+g", "route", "Calculer", priority=True),
         Binding("down", "to_list", show=False),
+        Binding("f1", "tab('tab-route')", "Itinéraire", priority=True),
+        Binding("f2", "tab('tab-catalogue')", "Catalogue", priority=True),
+        Binding("f3", "tab('tab-networks')", "Réseaux", priority=True),
+        Binding("f4", "tab('tab-actions')", "Actions", priority=True),
+        Binding("f5", "tab('tab-settings')", "Paramètres", priority=True),
+        Binding("f6", "tab('tab-results')", "Résultats", priority=True),
+        Binding("f7", "tab('tab-help')", "Aide", priority=True),
     ]
 
     def __init__(self, data_dir: Path, tier_name: str, java: str | None = None, xmx: str = "2g",
@@ -219,12 +246,16 @@ class Explorer(App):
         self.dates = window_dates(plan, today or dt.date.today()) if plan else []
         self.day: dt.date | None = self.dates[0] if self.dates else reference_day
         self.server = server  # injected in tests
-        self.geocoder = geocoder if geocoder is not None else Geocoder(cache_dir / "geocode.json" if cache_dir else None)
+        self.settings = settings_module.load()
+        if geocoder is None:
+            geocoder = Geocoder(cache_dir / "geocode.json" if cache_dir else None) if self.settings.explorer.geocoding                 else NoGeocoder()
+        self.geocoder = geocoder
         self.index: PlaceIndex | None = None
         self.outline: list = []
         self.chosen: dict[str, Endpoint | None] = {"from": None, "to": None}
         self.suggestions: dict[str, list[Endpoint]] = {"from": [], "to": []}
         self.places_found: dict[str, list[Place]] = {"from": [], "to": []}
+        self.searched: dict[str, str] = {}  # the text each field's suggestions were computed for
         self.result: RouteResult | None = None
         self.journey: Journey | None = None
         self.zoom = True
@@ -234,11 +265,31 @@ class Explorer(App):
         self.changes_used = DEFAULT_CHANGES  # the limit of the result on screen
         self.busy: tuple[str, float] | None = None  # a search under way: its text, its start
         self.frame = 0
+        self.loads = 0  # networks loaded since start: a new loading checklist each time
 
     # ── layout ───────────────────────────────────────────────────────────────────────
 
     def compose(self) -> ComposeResult:
         yield Header()
+        with TabbedContent(id="tabs", initial="tab-route"):
+            with TabPane("Itinéraire", id="tab-route"):
+                with Horizontal(id="route"):
+                    yield from self.compose_route()
+            with TabPane("Catalogue", id="tab-catalogue"):
+                yield CataloguePane(id="catalogue")
+            with TabPane("Réseaux", id="tab-networks"):
+                yield NetworksPane(id="networks")
+            with TabPane("Actions", id="tab-actions"):
+                yield ActionsPane(id="actions")
+            with TabPane("Paramètres", id="tab-settings"):
+                yield SettingsPane(id="settings")
+            with TabPane("Résultats", id="tab-results"):
+                yield ResultsPane(id="results")
+            with TabPane("Aide", id="tab-help"):
+                yield HelpPane(id="help")
+        yield Footer()
+
+    def compose_route(self) -> ComposeResult:
         with Vertical(id="left"):
             yield Label("Départ · arrêt ou adresse", classes="label")
             yield Input(placeholder="Bellecour, Châtelet, 20 rue de la Paix Paris…", id="from", disabled=True)
@@ -246,22 +297,16 @@ class Explorer(App):
             yield Label("Arrivée · arrêt ou adresse", classes="label")
             yield Input(placeholder="Part-Dieu, La Défense, Tour Eiffel…", id="to", disabled=True)
             yield OptionList(id="to_list")
-            if self.plan:
-                start, end = self.plan.window
-                when = f"Quand · données du {short_day(start)} au {short_day(end)}"
-            else:
-                when = f"Quand · horaires du {day_text(self.reference_day)}" if self.reference_day else "Quand"
-            yield Label(when, id="when_label", classes="label")
-            if self.plan:
-                yield Select([(date_option(d, self.plan), d.isoformat()) for d in self.dates],
-                             value=self.dates[0].isoformat(), allow_blank=False, id="day")
+            yield Label(self.when_text(), id="when_label", classes="label")
+            yield Select(self.date_options() or [("–", "-")], value=self.dates[0].isoformat() if self.dates else "-",
+                         allow_blank=False, id="day")
             with Horizontal(id="when"):
                 yield Input(value="08:00", id="time", placeholder="HH:MM")
                 yield Switch(id="arrive_by")
                 yield Label("arriver avant", id="arrive_by_label")
             with Horizontal(id="limits"):
                 yield Button("−", id="fewer")
-                yield Input(value=str(DEFAULT_CHANGES), id="max_changes", type="integer", max_length=2)
+                yield Input(value=str(self.settings.explorer.default_changes), id="max_changes", type="integer", max_length=2)
                 yield Button("+", id="more")
                 yield Label("correspondances max", id="limits_label")
             with Horizontal(id="options"):
@@ -278,12 +323,22 @@ class Explorer(App):
             yield OptionList(id="alternatives")
             with VerticalScroll(id="legs_box"):  # an absurd journey has more legs than the screen
                 yield Static("", id="legs")
-            yield Static("", id="map")
-        yield Footer()
+            yield MapView(id="map")
+            yield Static("", id="map_legend")
+
+    def when_text(self) -> str:
+        if self.plan:
+            start, end = self.plan.window
+            return f"Quand · données du {short_day(start)} au {short_day(end)}"
+        return f"Quand · horaires du {day_text(self.reference_day)}" if self.reference_day else "Quand"
+
+    def date_options(self) -> list[tuple[str, str]]:
+        return [(date_option(d, self.plan), d.isoformat()) for d in self.dates] if self.plan else []
 
     def on_mount(self) -> None:
-        for widget in ("#summary", "#alternatives", "#legs_box", "#map"):
+        for widget in ("#summary", "#alternatives", "#legs_box", "#map", "#map_legend"):
             self.query_one(widget).display = False
+        self.query_one("#day").display = bool(self.plan)
         self.set_interval(1 / 12, self.spin)
         self.load()
 
@@ -292,7 +347,7 @@ class Explorer(App):
     @work(thread=True, exclusive=True, group="load")
     def load(self) -> None:
         started = time.perf_counter()
-        loader = self.query_one("#loader", LoadingView)
+        loader = self.query_one(LoadingView)
         current = "engine"
 
         def step(method: str, key: str, *args) -> None:
@@ -395,8 +450,8 @@ class Explorer(App):
         self.set_timer(0.8, self.reveal)  # leave the finished checklist on screen a moment
 
     def reveal(self) -> None:
-        self.query_one("#loader").display = False
-        for widget in ("#summary", "#legs_box", "#map"):
+        self.query_one(LoadingView).display = False
+        for widget in ("#summary", "#legs_box", "#map", "#map_legend"):
             self.query_one(widget).display = True
         self.call_after_refresh(self.redraw_map)
 
@@ -412,6 +467,7 @@ class Explorer(App):
         found = self.index.search(event.value, PLACE_LIMIT) if self.index and len(event.value.strip()) >= 2 else []
         self.places_found[field] = found
         self.fill(field, found, [])
+        self.searched[field] = event.value
         other = self.chosen["to" if field == "from" else "from"]
         near = (other.lat, other.lon) if other is not None else None
         self.run_worker(functools.partial(self.find_addresses, field, event.value, near), thread=True,
@@ -459,6 +515,12 @@ class Explorer(App):
     @on(Input.Submitted, "#from, #to")
     def pick_first(self, event: Input.Submitted) -> None:
         field = event.input.id
+        if self.searched.get(field) != event.value and self.chosen.get(field) is None:
+            # Enter came before the suggestions for the latest keystrokes: compute them now.
+            found = self.index.search(event.value, PLACE_LIMIT) if self.index and len(event.value.strip()) >= 2 else []
+            self.places_found[field] = found
+            self.fill(field, found, [])
+            self.searched[field] = event.value
         choice = self.highlighted_suggestion(field)
         if choice is not None:
             self.choose(field, choice)
@@ -520,7 +582,7 @@ class Explorer(App):
 
     @on(Select.Changed, "#day")
     def day_changed(self, event: Select.Changed) -> None:
-        if event.value is Select.BLANK:
+        if event.value is Select.BLANK or event.value == "-" or not self.plan:
             return
         self.day = dt.date.fromisoformat(str(event.value))
         if self.server is not None and self.index is not None:
@@ -556,7 +618,8 @@ class Explorer(App):
                 self.call_from_thread(self.update_sub_title)
                 self.busy = (f"Calcul {origin.name[:30]} → {destination.name[:30]}…", time.perf_counter())
             result = self.server.route(engine_endpoint(origin), engine_endpoint(destination), when, arrive_by,
-                                       max_rounds=changes + 1, fallback_walk_m=FALLBACK_WALK_M if addresses else None,
+                                       max_rounds=changes + 1,
+                                       fallback_walk_m=(self.settings.explorer.fallback_walk_m or None) if addresses else None,
                                        school=school)
         except Exception as error:  # the engine said no: show it, keep the app alive
             if "OutOfMemoryError" in str(error):
@@ -600,6 +663,7 @@ class Explorer(App):
             self.render_journey(self.journey, result, arrive_by)
         # A list of one would only repeat the summary: show it when there is a choice.
         alternatives.display = len(journeys) > 1
+        self.query_one("#map", MapView).follow()
         self.redraw_map()
 
     @on(OptionList.OptionSelected, "#alternatives")
@@ -630,18 +694,88 @@ class Explorer(App):
     # ── map and little actions ───────────────────────────────────────────────────────
 
     def redraw_map(self) -> None:
-        box = self.query_one("#map", Static)
-        cols, rows = max(box.size.width, 20), max(box.size.height, 8)
+        box = self.query_one("#map", MapView)
         zoom = self.zoom and self.journey is not None
-        drawing = mapview.draw(cols, rows, self.journey, self.outline, zoom, self.network)
-        box.update(drawing)
+        box.show(self.journey, self.outline, zoom, self.network)
+        self.query_one("#map_legend", Static).update(mapview.legend(self.journey))
 
     def on_resize(self) -> None:
         self.call_after_refresh(self.redraw_map)
 
     def action_zoom(self) -> None:
         self.zoom = not self.zoom
+        self.query_one("#map", MapView).follow()
         self.redraw_map()
+
+    # ── the other tabs ───────────────────────────────────────────────────────────────
+
+    def action_tab(self, tab: str) -> None:
+        tabs = self.query_one("#tabs", TabbedContent)
+        if tabs.active != tab:
+            # A focused widget pulls its own tab back to the front: let go of the focus first.
+            self.set_focus(None)
+            tabs.active = tab
+
+    def run_task(self, key: str, options: str | None = None) -> None:
+        """Run one of the Actions (tasks.py) and show its output: from any tab."""
+        self.action_tab("tab-actions")
+        pane = self.query_one("#actions", ActionsPane)
+        pane.select(key, options)
+        pane.start(pane.selected, pane.query_one("#act-options", Input).value)
+
+    def task_finished(self, key: str) -> None:
+        if key in ("refresh", "connected", "school", "convert", "notebook"):
+            self.query_one("#networks", NetworksPane).reload()
+            self.notify("Réseaux mis à jour : Réseaux → « Ouvrir dans l'itinéraire » pour charger la nouvelle version.",
+                        title="Action terminée", timeout=8)
+        if key in ("download",):
+            self.query_one("#catalogue", CataloguePane).reload()
+
+    def settings_changed(self, values: settings_module.Settings) -> None:
+        self.settings = values
+        self.notify("Paramètres enregistrés. Le moteur de l'itinéraire les prendra à son prochain démarrage "
+                    "(Réseaux → Ouvrir).", timeout=6)
+
+    def open_network(self, key: str) -> None:
+        """Load another converted network in the itinerary tab: the engine restarts on it."""
+        folder = RAPTOR_DIR / key
+        plan = Plan.read(folder / "horizon.json") if (folder / "horizon.json").exists() else None
+        data = folder if plan else tier_dir(key)
+        self.switch_network(data, NETWORK_NAMES.get(key, key), plan)
+
+    def switch_network(self, data_dir: Path, name: str, plan: Plan | None) -> None:
+        if self.server is not None:
+            self.server.close()
+        self.server = None
+        self.data_dir, self.tier_name, self.plan = data_dir, name, plan
+        self.xmx = self.settings.explorer.xmx
+        self.dates = window_dates(plan, dt.date.today()) if plan else []
+        self.day = self.dates[0] if self.dates else self.reference_day
+        self.index, self.journey, self.result = None, None, None
+        self.chosen = {"from": None, "to": None}
+        for field in ("from", "to"):
+            box = self.query_one(f"#{field}", Input)
+            with box.prevent(Input.Changed):
+                box.value = ""
+            box.disabled = True
+        for widget in ("#go", "#random"):
+            self.query_one(widget).disabled = True
+        self.query_one("#when_label", Label).update(self.when_text())
+        day = self.query_one("#day", Select)
+        if plan:
+            with day.prevent(Select.Changed):
+                day.set_options(self.date_options())
+                day.value = self.dates[0].isoformat()
+        day.display = bool(plan)
+        for widget in ("#summary", "#alternatives", "#legs_box", "#map", "#map_legend"):
+            self.query_one(widget).display = False
+        old = self.query_one(LoadingView)
+        self.loads += 1
+        new = LoadingView(name, LOAD_STEPS, id=f"loader-{self.loads}")
+        self.query_one("#right").mount(new, before=old)
+        old.remove()
+        self.action_tab("tab-route")
+        self.load()
 
     @on(Button.Pressed, "#swap")
     def action_swap(self) -> None:
