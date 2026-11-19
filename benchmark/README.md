@@ -2,7 +2,7 @@
 
 **Question:** can [raptor-kmp](https://github.com/dotshell-org/raptor-kmp) route over a GTFS
 covering all of mainland France, on a phone and on a server? **Answer so far:** see
-[RESULTS.md](RESULTS.md).
+[RESULTS.md](RESULTS.md) (in French: [RESULTS.fr.md](RESULTS.fr.md)).
 
 The pipeline converts one feed per run. Answering the question takes an input it has never
 seen: every reasonably complete French feed, merged into one. This folder builds that input,
