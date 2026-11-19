@@ -6,7 +6,8 @@ here, once per feed:
 - every id gets the `feed_id:` prefix, references included, so feeds cannot collide;
 - only physical stops with coordinates inside mainland France are kept (the pipeline
   reads neither location_type nor parent_station);
-- the catalogue's agency and stop_id filters are applied;
+- the catalogue's agency, route (keep_routes) and stop_id filters are applied; trips of a
+  dropped route count in trips_dropped_by_agency;
 - calendars become explicit service dates inside the merge window (calendar_dates only);
 - frequencies.txt is expanded into trips (the pipeline does not read it);
 - missing stop times are interpolated along the trip's distance (the pipeline drops a
@@ -190,7 +191,10 @@ class FeedReport:
 
 def filters_signature(row: dict) -> str:
     keys = ("keep_agencies", "drop_agencies", "keep_stop_ids", "drop_stop_ids")
-    return hashlib.sha256(json.dumps({k: row.get(k, "") for k in keys}, sort_keys=True).encode()).hexdigest()[:16]
+    values = {k: row.get(k, "") for k in keys}
+    if row.get("keep_routes"):  # only when set: rows without it keep their cached signature
+        values["keep_routes"] = row["keep_routes"]
+    return hashlib.sha256(json.dumps(values, sort_keys=True).encode()).hexdigest()[:16]
 
 
 def is_current(out_dir: Path, row: dict, window: Window, source_sha256: str) -> bool:
@@ -261,6 +265,9 @@ def normalize_feed(row: dict, window: Window, con: duckdb.DuckDBPyConnection | N
                    {_col(r, 'route_color')} AS route_color, {_col(r, 'route_text_color')} AS route_text_color
             FROM raw_routes WHERE route_id IS NOT NULL""")
         con.execute("DELETE FROM n_routes WHERE agency_id NOT IN (SELECT agency_id FROM kept_agency)")
+        if row.get("keep_routes"):  # catalogue: only these lines of the feed (regex on the short name)
+            con.execute(f"""DELETE FROM n_routes
+                WHERE NOT regexp_matches(coalesce(route_short_name, ''), {_sql_str(row['keep_routes'])})""")
 
         # Stops: physical ones, with coordinates, inside mainland France.
         s = cols["stops"]

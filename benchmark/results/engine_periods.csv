@@ -1,0 +1,5 @@
+engine,xmx,status,failed_during,peak_heap_mb,semaine_buildMs,semaine_retainedMb,samedi_buildMs,samedi_retainedMb,dimanche_buildMs,dimanche_retainedMb,semaine_random_forward_found,semaine_random_forward_p95_ms,semaine_random_arrive_by_found,semaine_random_arrive_by_p95_ms,semaine_address_forward_found,semaine_address_forward_p95_ms,samedi_random_forward_found,samedi_random_forward_p95_ms,samedi_random_arrive_by_found,samedi_random_arrive_by_p95_ms,samedi_address_forward_found,samedi_address_forward_p95_ms,dimanche_random_forward_found,dimanche_random_forward_p95_ms,dimanche_random_arrive_by_found,dimanche_random_arrive_by_p95_ms,dimanche_address_forward_found,dimanche_address_forward_p95_ms
+2.2.0,256m,out_of_memory,build semaine,0,,,,,,,,,,,,,,,,,,,,,,,,
+2.4.0-SNAPSHOT,256m,ok,,276,518.1,123.3,406.7,94.6,258.3,72.7,196,33.37,6,42.41,84,43.9,158,24.53,5,27.21,70,30.85,65,16.49,4,20.69,37,21.15
+2.4.0-SNAPSHOT,224m,ok,,262,561.8,123.4,354.3,94.5,224.2,72.8,196,33.12,6,37.08,84,39.54,158,22.73,5,25.3,70,29.36,65,15.19,4,16.91,37,19.97
+2.4.0-SNAPSHOT,192m,out_of_memory,queries semaine,0,,,,,,,,,,,,,,,,,,,,,,,,

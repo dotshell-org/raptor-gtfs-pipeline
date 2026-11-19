@@ -33,6 +33,8 @@ class Leg:
     walk: bool
     stops: int
     path: list[tuple[float, float]] = field(default_factory=list)
+    # transit, transfer, or a walk to/from an address: walk_access, walk_egress, walk_direct
+    kind: str = "transit"
 
 
 @dataclass
@@ -61,6 +63,11 @@ class RouteResult:
     ms: float
     journeys: list[Journey]
     max_rounds: int | None = None  # the limit the engine ran with: most rides, i.e. changes + 1
+    # Addresses only: nothing within 500 m on foot, so the engine walked up to walk_radius metres
+    fallback: bool = False
+    walk_radius: float | None = None
+    # School lines left out of this search (route numbers), 0 when they were all in
+    school_blocked: int = 0
 
     def best(self, arrive_by: bool = False) -> Journey | None:
         if not self.journeys:
@@ -75,18 +82,23 @@ def parse_route(answer: dict) -> RouteResult:
     for legs in answer.get("journeys", []):
         journeys.append(Journey([
             Leg(l["from"], l["to"], l["dep"], l["arr"], l.get("route"), l.get("direction"), l["walk"], l.get("stops", 0),
-                [(p[0], p[1]) for p in l.get("path", [])])
+                [(p[0], p[1]) for p in l.get("path", [])], l.get("kind", "transfer" if l["walk"] else "transit"))
             for l in legs]))
-    return RouteResult(answer["ms"], journeys, answer.get("maxRounds"))
+    return RouteResult(answer["ms"], journeys, answer.get("maxRounds"), answer.get("fallback", False),
+                       answer.get("walkRadius"), answer.get("schoolBlocked", 0))
 
 
 class EngineServer:
-    """One JVM with one network loaded. Thread-safe: requests are serialized."""
+    """One JVM with one network loaded. Thread-safe: requests are serialized.
+
+    `data_dir` is a converted tier (its routes.bin) or a live network, one sub-folder per day
+    type (gtfs_bench.refresh): then info["periods"] lists them and `period()` switches.
+    """
 
     def __init__(self, data_dir: Path, java: str | None = None, xmx: str = "2g"):
         if not (ENGINE_INSTALL / "lib").exists():
             raise EngineError(f"{ENGINE_INSTALL} is missing: run ./gradlew :benchmark-engine:installDist")
-        if not (data_dir / "routes.bin").exists():
+        if not (data_dir / "routes.bin").exists() and not list(data_dir.glob("*/routes.bin")):
             raise EngineError(f"no routes.bin in {data_dir}: convert that tier first")
         self._lock = threading.Lock()
         self._process = subprocess.Popen(
@@ -115,11 +127,31 @@ class EngineServer:
     def stops(self) -> list[tuple[int, str, float, float]]:
         return [tuple(s) for s in self.request({"op": "stops"})["stops"]]
 
-    def route(self, origins: list[int], destinations: list[int], time: int, arrive_by: bool = False,
-              max_rounds: int = 5) -> RouteResult:
-        """max_rounds is RAPTOR's round limit: the most rides a journey may take (changes + 1)."""
-        return parse_route(self.request({"op": "route", "from": origins, "to": destinations, "time": time,
-                                         "arriveBy": arrive_by, "maxRounds": max_rounds}))
+    def route(self, origins: list[int] | dict, destinations: list[int] | dict, time: int, arrive_by: bool = False,
+              max_rounds: int = 5, fallback_walk_m: float | None = None, school: bool = True) -> RouteResult:
+        """Each end is stop ids, or an address {"lat", "lon", "label"} (Address.endpoint()).
+
+        max_rounds is RAPTOR's round limit: the most rides a journey may take (changes + 1).
+        fallback_walk_m: when an address finds nothing within 500 m on foot, search again walking
+        up to that far (Pelo uses 6 000 m). school=False leaves the school lines out (when the
+        network has its school_routes.json: info["schoolRoutes"] > 0).
+        """
+        payload = {"op": "route", "from": origins, "to": destinations, "time": time,
+                   "arriveBy": arrive_by, "maxRounds": max_rounds}
+        if fallback_walk_m:
+            payload["fallbackWalkMeters"] = fallback_walk_m
+        if not school:
+            payload["school"] = False
+        return parse_route(self.request(payload))
+
+    def period(self, name: str) -> dict:
+        """Load another day type of a live network (one network at a time): its new info."""
+        self.info = self.request({"op": "period", "name": name})
+        return self.info
+
+    def routes(self) -> list[tuple[int, str]]:
+        """Every route the engine knows, as (number, name): what a school route number points at."""
+        return [tuple(r) for r in self.request({"op": "routes"})["routes"]]
 
     def close(self) -> None:
         try:

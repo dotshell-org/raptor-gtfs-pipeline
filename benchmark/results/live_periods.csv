@@ -1,0 +1,4 @@
+period,timetable_of,data_of,window_end,status,stops,routes,trips,stop_times,cold_build_ms,retained_heap_mb,peak_heap_mb,random_forward_p50_ms,random_forward_p95_ms
+semaine,2026-11-24,2026-11-19,2026-12-18,ok,311406,80041,487666,10478957,1238,274,430,14.56,60.78
+samedi,2026-11-28,2026-11-19,2026-12-18,ok,311406,26198,316621,7290343,921,236,388,8.66,49.9
+dimanche,2026-11-29,2026-11-19,2026-12-18,ok,311406,12306,151732,3405419,847,212,374,4.96,33.11

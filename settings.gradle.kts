@@ -8,6 +8,9 @@ pluginManagement {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
+        // -PraptorKmpLocal: also look in ~/.m2, for a raptor-kmp built and published locally
+        // (benchmark/README.md, "Engine memory"); with -PraptorKmpVersion=<its version>.
+        if (providers.gradleProperty("raptorKmpLocal").isPresent) mavenLocal()
         mavenCentral()
     }
 }

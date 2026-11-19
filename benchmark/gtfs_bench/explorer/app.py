@@ -1,16 +1,18 @@
-"""Terminal explorer: pick two stops anywhere in France, get the itinerary from raptor-kmp.
+"""Terminal explorer: pick two stops or addresses anywhere in France, get the itinerary from raptor-kmp.
 
     python -m gtfs_bench.explorer                 # France, from data/raptor/france/bench
     python -m gtfs_bench.explorer --tier metropole:lyon
 
 The engine is the real one (raptor-kmp-jvm) running in a JVM next to the interface, with
 the network loaded once. The time shown for each search is the raptor-kmp call alone,
-measured inside the JVM.
+measured inside the JVM. Addresses come from Photon, as in Pelo (see geocode.py), and go to
+the engine as points: it walks to every stop within 500 m, as Pelo's searches do.
 """
 
 from __future__ import annotations
 
 import datetime as dt
+import functools
 import json
 import random
 import time
@@ -25,14 +27,23 @@ from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.widgets import Button, Footer, Header, Input, Label, OptionList, Static, Switch
+from textual.widgets import Button, Footer, Header, Input, Label, OptionList, Select, Static, Switch, TabbedContent, TabPane
 from textual.widgets.option_list import Option
 from textual.worker import get_current_worker
 
+from .. import settings as settings_module
+from ..convert import RAPTOR_DIR
+from ..engine import tier_dir
+from ..horizon import LABELS, Plan
 from . import mapview
+from .mapview import MapView
+from .panes import ActionsPane, CataloguePane, HelpPane, NetworksPane, ResultsPane, SettingsPane
 from .backend import EngineServer, Journey, RouteResult
+from .geocode import Address, Geocoder
 from .loading import SPINNER, LoadingView, seconds_text
 from .places import Place, PlaceIndex
+
+Endpoint = Place | Address
 
 DAYS = ("lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche")
 MONTHS = ("janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre",
@@ -42,6 +53,12 @@ MONTHS = ("janvier", "février", "mars", "avril", "mai", "juin", "juillet", "ao�
 # default is 5 rounds; the explorer lets you go much higher, for the fun of absurd itineraries.
 DEFAULT_CHANGES = 4
 MAX_CHANGES = 99
+
+# Suggestions: stops first, then addresses, as in Pelo. Few stops, so addresses stay in view.
+PLACE_LIMIT = 12
+GEOCODE_DELAY_S = 0.3  # Pelo's debounce: ask Photon once typing pauses
+# Pelo's second try when an address finds nothing within 500 m on foot.
+FALLBACK_WALK_M = 6000.0
 
 # Start-up steps: key, label, weight = its usual seconds on France (cached communes), for the
 # overall bar.
@@ -57,8 +74,28 @@ LOAD_STEPS = [
 WARMUP_QUERIES = 30
 
 
+SHORT_MONTHS = ("janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc.")
+
+
 def day_text(day: dt.date) -> str:
     return f"{DAYS[day.weekday()]} {day.day} {MONTHS[day.month - 1]} {day.year}"
+
+
+def short_day(day: dt.date) -> str:
+    return f"{DAYS[day.weekday()][:3]}. {day.day} {SHORT_MONTHS[day.month - 1]}"
+
+
+def window_dates(plan: Plan, today: dt.date) -> list[dt.date]:
+    """The dates a live network answers for: from today (or the window's start) to its end."""
+    start, end = plan.window
+    first = max(start, today)
+    return [first + dt.timedelta(days=k) for k in range((end - first).days + 1)] or [start]
+
+
+def date_option(day: dt.date, plan: Plan) -> str:
+    kind = plan.network_for(day) or "semaine"
+    model = dt.date.fromisoformat(plan.days[kind])
+    return f"{short_day(day)} · {kind}" + ("" if model == day else f" (≈ {model.day:02d}/{model.month:02d})")
 
 
 def parse_changes(text: str) -> int | None:
@@ -93,6 +130,29 @@ def ms(value: float) -> str:
 
 def thousands(value: int) -> str:
     return f"{value:,}".replace(",", " ")
+
+
+class NoGeocoder:
+    """Address search switched off in the settings: no address is ever suggested."""
+
+    def search(self, text, near=None, limit=6):
+        return []
+
+
+#: What the console calls each network.
+NETWORK_NAMES = {"france": "France métropolitaine", "france-connexe": "France connexe (TGV, Intercités, cars, ferries)",
+                 "france-patterns": "France, une ligne par desserte",
+                 "france-complete": "France complète (connexe + transport scolaire)",
+                 "france-live": "France complète, données à jour"}
+
+
+def km(meters: float | None) -> str:
+    return f"{(meters or 0) / 1000:g} km".replace(".", ",")
+
+
+def engine_endpoint(endpoint: Endpoint) -> list[int] | dict:
+    """What the engine is sent for a choice: a place's stop ids, or an address's point."""
+    return endpoint.endpoint() if isinstance(endpoint, Address) else endpoint.ids
 
 
 def parse_time(text: str) -> int | None:
@@ -135,16 +195,17 @@ def legs_table(journey: Journey) -> Table:
 
 
 class Explorer(App):
-    TITLE = "raptor-kmp · explorateur"
+    TITLE = "raptor-kmp · console du benchmark France"
     CSS = """
-    Screen { layout: horizontal; }
+    #tabs { height: 1fr; }
+    #route { layout: horizontal; height: 1fr; }
     #left { width: 52; padding: 0 1; border-right: solid $panel-lighten-2; }
     #right { padding: 0 1; }
     .label { margin-top: 1; color: $text-muted; }
     #from_list, #to_list { height: 7; border: none; background: $boost; }
-    #when, #limits { height: 3; }
+    #when, #limits, #options { height: 3; }
     #time { width: 12; }
-    #arrive_by_label, #limits_label { padding: 1 1; }
+    #arrive_by_label, #limits_label, #school_label { padding: 1 1; }
     #fewer, #more { min-width: 5; width: 5; }
     #max_changes { width: 8; }
     #buttons { height: 3; margin-top: 1; }
@@ -163,20 +224,38 @@ class Explorer(App):
         Binding("ctrl+t", "zoom", "Zoom carte", priority=True),
         Binding("ctrl+g", "route", "Calculer", priority=True),
         Binding("down", "to_list", show=False),
+        Binding("f1", "tab('tab-route')", "Itinéraire", priority=True),
+        Binding("f2", "tab('tab-catalogue')", "Catalogue", priority=True),
+        Binding("f3", "tab('tab-networks')", "Réseaux", priority=True),
+        Binding("f4", "tab('tab-actions')", "Actions", priority=True),
+        Binding("f5", "tab('tab-settings')", "Paramètres", priority=True),
+        Binding("f6", "tab('tab-results')", "Résultats", priority=True),
+        Binding("f7", "tab('tab-help')", "Aide", priority=True),
     ]
 
     def __init__(self, data_dir: Path, tier_name: str, java: str | None = None, xmx: str = "2g",
                  cache_dir: Path | None = None, reference_day: dt.date | None = None, server=None,
-                 commune_lookup=None, outline: list | None = None):
+                 commune_lookup=None, outline: list | None = None, geocoder=None, plan: Plan | None = None,
+                 today: dt.date | None = None):
         super().__init__()
         self.commune_lookup, self.given_outline = commune_lookup, outline  # injected in tests
         self.data_dir, self.tier_name, self.java, self.xmx = data_dir, tier_name, java, xmx
         self.cache_dir, self.reference_day = cache_dir, reference_day
+        # A live network (gtfs_bench.refresh): any date of its window, each served by its day type.
+        self.plan = plan
+        self.dates = window_dates(plan, today or dt.date.today()) if plan else []
+        self.day: dt.date | None = self.dates[0] if self.dates else reference_day
         self.server = server  # injected in tests
+        self.settings = settings_module.load()
+        if geocoder is None:
+            geocoder = Geocoder(cache_dir / "geocode.json" if cache_dir else None) if self.settings.explorer.geocoding                 else NoGeocoder()
+        self.geocoder = geocoder
         self.index: PlaceIndex | None = None
         self.outline: list = []
-        self.chosen: dict[str, Place | None] = {"from": None, "to": None}
-        self.suggestions: dict[str, list[Place]] = {"from": [], "to": []}
+        self.chosen: dict[str, Endpoint | None] = {"from": None, "to": None}
+        self.suggestions: dict[str, list[Endpoint]] = {"from": [], "to": []}
+        self.places_found: dict[str, list[Place]] = {"from": [], "to": []}
+        self.searched: dict[str, str] = {}  # the text each field's suggestions were computed for
         self.result: RouteResult | None = None
         self.journey: Journey | None = None
         self.zoom = True
@@ -186,29 +265,53 @@ class Explorer(App):
         self.changes_used = DEFAULT_CHANGES  # the limit of the result on screen
         self.busy: tuple[str, float] | None = None  # a search under way: its text, its start
         self.frame = 0
+        self.loads = 0  # networks loaded since start: a new loading checklist each time
 
     # ── layout ───────────────────────────────────────────────────────────────────────
 
     def compose(self) -> ComposeResult:
         yield Header()
+        with TabbedContent(id="tabs", initial="tab-route"):
+            with TabPane("Itinéraire", id="tab-route"):
+                with Horizontal(id="route"):
+                    yield from self.compose_route()
+            with TabPane("Catalogue", id="tab-catalogue"):
+                yield CataloguePane(id="catalogue")
+            with TabPane("Réseaux", id="tab-networks"):
+                yield NetworksPane(id="networks")
+            with TabPane("Actions", id="tab-actions"):
+                yield ActionsPane(id="actions")
+            with TabPane("Paramètres", id="tab-settings"):
+                yield SettingsPane(id="settings")
+            with TabPane("Résultats", id="tab-results"):
+                yield ResultsPane(id="results")
+            with TabPane("Aide", id="tab-help"):
+                yield HelpPane(id="help")
+        yield Footer()
+
+    def compose_route(self) -> ComposeResult:
         with Vertical(id="left"):
-            yield Label("Départ", classes="label")
-            yield Input(placeholder="Bellecour, Châtelet, Gare de Brest…", id="from", disabled=True)
+            yield Label("Départ · arrêt ou adresse", classes="label")
+            yield Input(placeholder="Bellecour, Châtelet, 20 rue de la Paix Paris…", id="from", disabled=True)
             yield OptionList(id="from_list")
-            yield Label("Arrivée", classes="label")
-            yield Input(placeholder="Part-Dieu, La Défense…", id="to", disabled=True)
+            yield Label("Arrivée · arrêt ou adresse", classes="label")
+            yield Input(placeholder="Part-Dieu, La Défense, Tour Eiffel…", id="to", disabled=True)
             yield OptionList(id="to_list")
-            when = f"Quand · horaires du {day_text(self.reference_day)}" if self.reference_day else "Quand"
-            yield Label(when, id="when_label", classes="label")
+            yield Label(self.when_text(), id="when_label", classes="label")
+            yield Select(self.date_options() or [("–", "-")], value=self.dates[0].isoformat() if self.dates else "-",
+                         allow_blank=False, id="day")
             with Horizontal(id="when"):
                 yield Input(value="08:00", id="time", placeholder="HH:MM")
                 yield Switch(id="arrive_by")
                 yield Label("arriver avant", id="arrive_by_label")
             with Horizontal(id="limits"):
                 yield Button("−", id="fewer")
-                yield Input(value=str(DEFAULT_CHANGES), id="max_changes", type="integer", max_length=2)
+                yield Input(value=str(self.settings.explorer.default_changes), id="max_changes", type="integer", max_length=2)
                 yield Button("+", id="more")
                 yield Label("correspondances max", id="limits_label")
+            with Horizontal(id="options"):
+                yield Switch(value=True, id="school", disabled=True)
+                yield Label("lignes scolaires", id="school_label")
             with Horizontal(id="buttons"):
                 yield Button("Calculer", id="go", variant="primary", disabled=True)
                 yield Button("Surprends-moi", id="random", disabled=True)
@@ -220,12 +323,22 @@ class Explorer(App):
             yield OptionList(id="alternatives")
             with VerticalScroll(id="legs_box"):  # an absurd journey has more legs than the screen
                 yield Static("", id="legs")
-            yield Static("", id="map")
-        yield Footer()
+            yield MapView(id="map")
+            yield Static("", id="map_legend")
+
+    def when_text(self) -> str:
+        if self.plan:
+            start, end = self.plan.window
+            return f"Quand · données du {short_day(start)} au {short_day(end)}"
+        return f"Quand · horaires du {day_text(self.reference_day)}" if self.reference_day else "Quand"
+
+    def date_options(self) -> list[tuple[str, str]]:
+        return [(date_option(d, self.plan), d.isoformat()) for d in self.dates] if self.plan else []
 
     def on_mount(self) -> None:
-        for widget in ("#summary", "#alternatives", "#legs_box", "#map"):
+        for widget in ("#summary", "#alternatives", "#legs_box", "#map", "#map_legend"):
             self.query_one(widget).display = False
+        self.query_one("#day").display = bool(self.plan)
         self.set_interval(1 / 12, self.spin)
         self.load()
 
@@ -234,7 +347,7 @@ class Explorer(App):
     @work(thread=True, exclusive=True, group="load")
     def load(self) -> None:
         started = time.perf_counter()
-        loader = self.query_one("#loader", LoadingView)
+        loader = self.query_one(LoadingView)
         current = "engine"
 
         def step(method: str, key: str, *args) -> None:
@@ -257,7 +370,9 @@ class Explorer(App):
             index = PlaceIndex(stops)
             step("done", "places", f"{thousands(len(index))} lieux")
 
-            cache = self.cache_dir / f"{self.data_dir.parent.name}-communes.json" if self.cache_dir else None
+            # A tier's folder is <tier>/bench; a live network's is the network's own folder.
+            stem = self.data_dir.parent.name if (self.data_dir / "routes.bin").exists() else self.data_dir.name
+            cache = self.cache_dir / f"{stem}-communes.json" if self.cache_dir else None
             cached = cache is not None and cache.exists()
             step("start", "communes", "depuis le cache" if cached else "première fois : quelques secondes, puis en cache")
             index.attach_communes(cache, self.commune_lookup)
@@ -302,20 +417,41 @@ class Explorer(App):
             line.append(f"  {seconds_text(elapsed)}", style="dim")
         self.query_one("#summary", Static).update(line)
 
+    def schedule_text(self) -> str:
+        """Which timetable a search uses: the reference day, or a live network's day type."""
+        if self.plan and self.day:
+            kind = self.plan.network_for(self.day) or "semaine"
+            model = dt.date.fromisoformat(self.plan.days[kind])
+            same = "" if model == self.day else f", celui du {short_day(model)}"
+            return f"horaires du {day_text(self.day)} (réseau {LABELS[kind]}{same})"
+        return f"horaires du {day_text(self.reference_day)}" if self.reference_day else ""
+
+    def update_sub_title(self) -> None:
+        info = self.server.info
+        period = f" · réseau {info['period']}" if len(info.get("periods") or []) > 1 else ""
+        self.sub_title = (f"{self.tier_name} · {thousands(info['stops'])} arrêts · {thousands(info['routes'])} lignes · "
+                          f"{thousands(info['trips'])} courses{period} · chargé en {ms(info['loadMs'])} · "
+                          f"{info['heapMb']:.0f} Mo" + (f" · {self.schedule_text()}" if self.schedule_text() else ""))
+
     def ready(self, seconds: float) -> None:
         info = self.server.info
-        day = f" · horaires du {day_text(self.reference_day)}" if self.reference_day else ""
-        self.sub_title = (f"{self.tier_name} · {thousands(info['stops'])} arrêts · {thousands(info['routes'])} lignes · "
-                          f"{thousands(info['trips'])} courses · chargé en {ms(info['loadMs'])} · {info['heapMb']:.0f} Mo{day}")
+        self.update_sub_title()
         for widget in ("#from", "#to", "#go", "#random"):
             self.query_one(widget).disabled = False
+        # School lines can be left out when the network comes with its list (gtfs_bench.school).
+        school_trips = info.get("schoolTrips", 0)
+        if info.get("schoolRoutes", 0):
+            self.query_one("#school", Switch).disabled = False
+            self.query_one("#school_label", Label).update(f"lignes scolaires · {thousands(school_trips)} courses")
+        else:
+            self.query_one("#school_label", Label).update("lignes scolaires · pas de liste pour ce réseau")
         self.status(f"Prêt en {seconds:.1f} s. Choisis un départ et une arrivée, ou Ctrl+R pour un trajet au hasard.")
         self.query_one("#from", Input).focus()
         self.set_timer(0.8, self.reveal)  # leave the finished checklist on screen a moment
 
     def reveal(self) -> None:
-        self.query_one("#loader").display = False
-        for widget in ("#summary", "#legs_box", "#map"):
+        self.query_one(LoadingView).display = False
+        for widget in ("#summary", "#legs_box", "#map", "#map_legend"):
             self.query_one(widget).display = True
         self.call_after_refresh(self.redraw_map)
 
@@ -328,28 +464,74 @@ class Explorer(App):
         if place is not None and event.value == place.name:
             return
         self.chosen[field] = None
-        found = self.index.search(event.value, 30) if self.index and len(event.value.strip()) >= 2 else []
-        self.suggestions[field] = found
+        found = self.index.search(event.value, PLACE_LIMIT) if self.index and len(event.value.strip()) >= 2 else []
+        self.places_found[field] = found
+        self.fill(field, found, [])
+        self.searched[field] = event.value
+        other = self.chosen["to" if field == "from" else "from"]
+        near = (other.lat, other.lon) if other is not None else None
+        self.run_worker(functools.partial(self.find_addresses, field, event.value, near), thread=True,
+                        exclusive=True, group=f"geocode-{field}")
+
+    def find_addresses(self, field: str, text: str, near: tuple[float, float] | None) -> None:
+        """Ask Photon once typing pauses; a newer keystroke cancels this worker."""
+        time.sleep(GEOCODE_DELAY_S)
+        worker = get_current_worker()
+        if worker.is_cancelled:
+            return
+        found = self.geocoder.search(text, near)
+        if not worker.is_cancelled:
+            self.call_from_thread(self.add_addresses, field, text, found)
+
+    def add_addresses(self, field: str, text: str, addresses: list[Address]) -> None:
+        if self.query_one(f"#{field}", Input).value != text or self.chosen[field] is not None:
+            return  # typed on, or picked something, meanwhile
+        self.fill(field, self.places_found[field], addresses)
+
+    def fill(self, field: str, places: list[Place], addresses: list[Address]) -> None:
+        """Stops, then a separator and the addresses. Option ids index self.suggestions."""
+        self.suggestions[field] = [*places, *addresses]
         options = self.query_one(f"#{field}_list", OptionList)
+        kept = options.highlighted if places else None
         options.clear_options()
-        options.add_options([Option(p.label(), id=str(i)) for i, p in enumerate(found)])
-        if found:
-            options.highlighted = 0
+        items = [Option(p.label(), id=str(i)) for i, p in enumerate(places)]
+        if addresses:
+            items.append(Option(Text("Adresses · Photon", style="dim italic"), id="addresses", disabled=True))
+            items += [Option(a.option_text(), id=str(len(places) + i)) for i, a in enumerate(addresses)]
+        options.add_options(items)
+        if places:
+            options.highlighted = kept if kept is not None and kept < len(places) else 0
+        elif addresses:
+            options.highlighted = 1  # the first address, under the separator
+
+    def highlighted_suggestion(self, field: str) -> Endpoint | None:
+        options = self.query_one(f"#{field}_list", OptionList)
+        if options.highlighted is not None:
+            option = options.get_option_at_index(options.highlighted)
+            if option.id and option.id.isdigit():
+                return self.suggestions[field][int(option.id)]
+        return self.suggestions[field][0] if self.suggestions[field] else None
 
     @on(Input.Submitted, "#from, #to")
     def pick_first(self, event: Input.Submitted) -> None:
         field = event.input.id
-        options = self.query_one(f"#{field}_list", OptionList)
-        index = options.highlighted if options.highlighted is not None else 0
-        if self.suggestions[field]:
-            self.choose(field, self.suggestions[field][min(index, len(self.suggestions[field]) - 1)])
+        if self.searched.get(field) != event.value and self.chosen.get(field) is None:
+            # Enter came before the suggestions for the latest keystrokes: compute them now.
+            found = self.index.search(event.value, PLACE_LIMIT) if self.index and len(event.value.strip()) >= 2 else []
+            self.places_found[field] = found
+            self.fill(field, found, [])
+            self.searched[field] = event.value
+        choice = self.highlighted_suggestion(field)
+        if choice is not None:
+            self.choose(field, choice)
 
     @on(OptionList.OptionSelected, "#from_list, #to_list")
     def pick(self, event: OptionList.OptionSelected) -> None:
         field = event.option_list.id.removesuffix("_list")
-        self.choose(field, self.suggestions[field][int(event.option.id)])
+        if event.option.id and event.option.id.isdigit():
+            self.choose(field, self.suggestions[field][int(event.option.id)])
 
-    def choose(self, field: str, place: Place) -> None:
+    def choose(self, field: str, place: Endpoint) -> None:
         self.chosen[field] = place
         box = self.query_one(f"#{field}", Input)
         with box.prevent(Input.Changed):
@@ -383,13 +565,37 @@ class Explorer(App):
             self.status(f"Correspondances max : un nombre de 0 à {MAX_CHANGES}.")
             return
         limit = f" (≤ {changes} corresp.)" if changes != DEFAULT_CHANGES else ""
+        school = self.query_one("#school", Switch).value
+        limit += "" if school else " sans scolaires"
         self.busy = (f"Calcul {origin.name[:30]} → {destination.name[:30]}{limit}…", time.perf_counter())
         self.spin()
-        self.compute(origin, destination, when, arrive_by, changes)
+        self.compute(origin, destination, when, arrive_by, changes, school)
 
     @on(Input.Submitted, "#time, #max_changes")
     def time_entered(self) -> None:
         self.action_route()
+
+    @on(Switch.Changed, "#school")
+    def school_switched(self) -> None:
+        if self.chosen["from"] and self.chosen["to"]:
+            self.action_route()
+
+    @on(Select.Changed, "#day")
+    def day_changed(self, event: Select.Changed) -> None:
+        if event.value is Select.BLANK or event.value == "-" or not self.plan:
+            return
+        self.day = dt.date.fromisoformat(str(event.value))
+        if self.server is not None and self.index is not None:
+            self.update_sub_title()
+            if self.chosen["from"] and self.chosen["to"]:
+                self.action_route()
+
+    def needed_period(self) -> str | None:
+        """The day type the chosen date needs, when the engine has another one loaded."""
+        if not (self.plan and self.day and self.server):
+            return None
+        kind = self.plan.network_for(self.day)
+        return kind if kind and kind != self.server.info.get("period") else None
 
     @on(Button.Pressed, "#fewer, #more")
     def step_changes(self, event: Button.Pressed) -> None:
@@ -401,9 +607,20 @@ class Explorer(App):
             self.action_route()
 
     @work(thread=True, exclusive=True, group="route")
-    def compute(self, origin: Place, destination: Place, when: int, arrive_by: bool, changes: int) -> None:
+    def compute(self, origin: Endpoint, destination: Endpoint, when: int, arrive_by: bool, changes: int,
+                school: bool = True) -> None:
+        addresses = isinstance(origin, Address) or isinstance(destination, Address)
         try:
-            result = self.server.route(origin.ids, destination.ids, when, arrive_by, max_rounds=changes + 1)
+            period = self.needed_period()
+            if period:  # another day type: the engine swaps networks first (about a second)
+                self.busy = (f"Chargement des horaires {LABELS[period]}…", time.perf_counter())
+                self.server.period(period)
+                self.call_from_thread(self.update_sub_title)
+                self.busy = (f"Calcul {origin.name[:30]} → {destination.name[:30]}…", time.perf_counter())
+            result = self.server.route(engine_endpoint(origin), engine_endpoint(destination), when, arrive_by,
+                                       max_rounds=changes + 1,
+                                       fallback_walk_m=(self.settings.explorer.fallback_walk_m or None) if addresses else None,
+                                       school=school)
         except Exception as error:  # the engine said no: show it, keep the app alive
             if "OutOfMemoryError" in str(error):
                 message = (f"Pas assez de mémoire pour {limit_text(changes)} : relance l'explorateur avec "
@@ -416,7 +633,7 @@ class Explorer(App):
             return
         self.call_from_thread(self.show, origin, destination, when, arrive_by, changes, result)
 
-    def show(self, origin: Place, destination: Place, when: int, arrive_by: bool, changes: int,
+    def show(self, origin: Endpoint, destination: Endpoint, when: int, arrive_by: bool, changes: int,
              result: RouteResult) -> None:
         self.result, self.changes_used, self.busy = result, changes, None
         journeys = sorted(result.journeys, key=lambda j: (j.changes, j.arrival))
@@ -425,13 +642,18 @@ class Explorer(App):
         alternatives.clear_options()
         verb = "arrivée avant" if arrive_by else "départ à"
         limit = f" ≤{changes}" if changes != DEFAULT_CHANGES else ""
+        limit += " ¬scol" if result.school_blocked else ""
         self.history.appendleft(f"{ms(result.ms):>9}  {origin.name[:15]} → {destination.name[:15]}{limit}")
         self.query_one("#history", Static).update(Text("Derniers calculs\n", style="bold") + Text("\n".join(self.history)))
         if self.journey is None:
-            summary = Text(f"Aucun itinéraire, {verb} {hhmm(when)}\n", style="bold #e34948")
-            summary.append(f"calculé en {ms(result.ms)} · {limit_text(changes)}\n", style="dim")
-            hint = " · essaie plus de correspondances" if changes < 10 else " · ni même en zigzaguant"
-            summary.append("sans TGV ni Intercités pour l'instant" + hint, style="dim")
+            summary = Text(f"Aucun itinéraire, {verb} {hhmm(when)}", style="bold #e34948")
+            summary.append(f"  ·  {self.schedule_text()}\n" if self.schedule_text() else "\n", style="dim")
+            summary.append(f"calculé en {ms(result.ms)} · {limit_text(changes)}"
+                           + (" · sans les lignes scolaires" if result.school_blocked else "") + "\n", style="dim")
+            if result.fallback:
+                summary.append(f"même en marchant jusqu'à {km(result.walk_radius)} depuis l'adresse", style="dim")
+            else:
+                summary.append("essaie plus de correspondances" if changes < 10 else "ni même en zigzaguant", style="dim")
             self.query_one("#summary", Static).update(summary)
             self.query_one("#legs", Static).update("")
         else:
@@ -441,6 +663,7 @@ class Explorer(App):
             self.render_journey(self.journey, result, arrive_by)
         # A list of one would only repeat the summary: show it when there is a choice.
         alternatives.display = len(journeys) > 1
+        self.query_one("#map", MapView).follow()
         self.redraw_map()
 
     @on(OptionList.OptionSelected, "#alternatives")
@@ -458,8 +681,12 @@ class Explorer(App):
         count = len(result.journeys)
         summary.append(f"calculé en {ms(result.ms)} par raptor-kmp · {count} itinéraire{'s' if count > 1 else ''} "
                        f"{'optimaux' if count > 1 else 'optimal'} (moins de changements ↔ plus tôt)\n", style="#1baf7a")
-        day = f" · horaires du {day_text(self.reference_day)}" if self.reference_day else ""
-        summary.append(limit_text(self.changes_used) + day, style="dim")
+        day = f" · {self.schedule_text()}" if self.schedule_text() else ""
+        school = " · sans les lignes scolaires" if result.school_blocked else ""
+        summary.append(limit_text(self.changes_used) + school + day, style="dim")
+        if result.fallback:
+            summary.append(f"\nrien d'utile à 500 m à pied : marche élargie à {km(result.walk_radius)}, comme Pelo",
+                           style="#eda100")
         self.query_one("#summary", Static).update(summary)
         self.query_one("#legs", Static).update(legs_table(journey))
         self.query_one("#legs_box", VerticalScroll).scroll_home(animate=False)
@@ -467,18 +694,88 @@ class Explorer(App):
     # ── map and little actions ───────────────────────────────────────────────────────
 
     def redraw_map(self) -> None:
-        box = self.query_one("#map", Static)
-        cols, rows = max(box.size.width, 20), max(box.size.height, 8)
+        box = self.query_one("#map", MapView)
         zoom = self.zoom and self.journey is not None
-        drawing = mapview.draw(cols, rows, self.journey, self.outline, zoom, self.network)
-        box.update(drawing)
+        box.show(self.journey, self.outline, zoom, self.network)
+        self.query_one("#map_legend", Static).update(mapview.legend(self.journey))
 
     def on_resize(self) -> None:
         self.call_after_refresh(self.redraw_map)
 
     def action_zoom(self) -> None:
         self.zoom = not self.zoom
+        self.query_one("#map", MapView).follow()
         self.redraw_map()
+
+    # ── the other tabs ───────────────────────────────────────────────────────────────
+
+    def action_tab(self, tab: str) -> None:
+        tabs = self.query_one("#tabs", TabbedContent)
+        if tabs.active != tab:
+            # A focused widget pulls its own tab back to the front: let go of the focus first.
+            self.set_focus(None)
+            tabs.active = tab
+
+    def run_task(self, key: str, options: str | None = None) -> None:
+        """Run one of the Actions (tasks.py) and show its output: from any tab."""
+        self.action_tab("tab-actions")
+        pane = self.query_one("#actions", ActionsPane)
+        pane.select(key, options)
+        pane.start(pane.selected, pane.query_one("#act-options", Input).value)
+
+    def task_finished(self, key: str) -> None:
+        if key in ("refresh", "connected", "school", "convert", "notebook"):
+            self.query_one("#networks", NetworksPane).reload()
+            self.notify("Réseaux mis à jour : Réseaux → « Ouvrir dans l'itinéraire » pour charger la nouvelle version.",
+                        title="Action terminée", timeout=8)
+        if key in ("download",):
+            self.query_one("#catalogue", CataloguePane).reload()
+
+    def settings_changed(self, values: settings_module.Settings) -> None:
+        self.settings = values
+        self.notify("Paramètres enregistrés. Le moteur de l'itinéraire les prendra à son prochain démarrage "
+                    "(Réseaux → Ouvrir).", timeout=6)
+
+    def open_network(self, key: str) -> None:
+        """Load another converted network in the itinerary tab: the engine restarts on it."""
+        folder = RAPTOR_DIR / key
+        plan = Plan.read(folder / "horizon.json") if (folder / "horizon.json").exists() else None
+        data = folder if plan else tier_dir(key)
+        self.switch_network(data, NETWORK_NAMES.get(key, key), plan)
+
+    def switch_network(self, data_dir: Path, name: str, plan: Plan | None) -> None:
+        if self.server is not None:
+            self.server.close()
+        self.server = None
+        self.data_dir, self.tier_name, self.plan = data_dir, name, plan
+        self.xmx = self.settings.explorer.xmx
+        self.dates = window_dates(plan, dt.date.today()) if plan else []
+        self.day = self.dates[0] if self.dates else self.reference_day
+        self.index, self.journey, self.result = None, None, None
+        self.chosen = {"from": None, "to": None}
+        for field in ("from", "to"):
+            box = self.query_one(f"#{field}", Input)
+            with box.prevent(Input.Changed):
+                box.value = ""
+            box.disabled = True
+        for widget in ("#go", "#random"):
+            self.query_one(widget).disabled = True
+        self.query_one("#when_label", Label).update(self.when_text())
+        day = self.query_one("#day", Select)
+        if plan:
+            with day.prevent(Select.Changed):
+                day.set_options(self.date_options())
+                day.value = self.dates[0].isoformat()
+        day.display = bool(plan)
+        for widget in ("#summary", "#alternatives", "#legs_box", "#map", "#map_legend"):
+            self.query_one(widget).display = False
+        old = self.query_one(LoadingView)
+        self.loads += 1
+        new = LoadingView(name, LOAD_STEPS, id=f"loader-{self.loads}")
+        self.query_one("#right").mount(new, before=old)
+        old.remove()
+        self.action_tab("tab-route")
+        self.load()
 
     @on(Button.Pressed, "#swap")
     def action_swap(self) -> None:

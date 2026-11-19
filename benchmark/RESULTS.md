@@ -11,11 +11,16 @@ and 481,983 trips on one day. raptor-kmp loads it in half a second, holds it in 
 and reaches every one of the 95 préfectures from Paris within the day.
 
 - **On a server, it passes every target we set**, with a wide margin.
-- **On a phone, memory and loading pass**, provided the app asks for a large heap.
-  Everyday trips are quick too: half of the trips inside Lyon or Paris take under 8 ms.
-  The slowest 5 % of searches take 40–45 ms, against a 30 ms target, so that target is
-  missed. Those are long cross-country searches and "arrive by" searches. The fix belongs
-  in the engine (see [What makes a search slower](#what-makes-a-search-slower)).
+- **On a phone, memory and loading pass**, and since steps 12–13 without asking for a large
+  heap: with raptor-kmp `2.4.0-SNAPSHOT` (branch `perf/memory-256`) France holds 124 MB
+  instead of 257, and loads and answers in a 224 MB heap. Everyday trips are quick: half
+  of the trips inside Lyon or Paris take under 8 ms. The slowest 5 % of searches take about
+  36 ms, against a 30 ms target: close, still missed. Those are long cross-country
+  searches and "arrive by" searches (see [What makes a search slower](#what-makes-a-search-slower)).
+
+Steps 9 to 13 then added what an app needs around that: search from an address, every
+school line with a switch, data that stay weeks ahead with a daily refresh, and the engine
+work. They are told in [After the first verdict](#after-the-first-verdict-steps-913).
 
 ![From Paris to every préfecture](results/reachability.png)
 
@@ -25,16 +30,17 @@ long-distance layer.*
 
 ### At a glance
 
-France connexe, desktop JVM, four runs. The targets were set before measuring.
+France connexe, desktop JVM, four runs; the last column is France complète (with every
+school line) on the engine of steps 12–13. The targets were set before measuring.
 
-| | Measured | Phone target | Server target |
-|---|---|---|---|
-| Loading the network | 0.49–0.57 s | ≤ 3 s ✅ | — |
-| Memory held once loaded | 257 MB | ≤ 512 MB ✅ (with `largeHeap`) | ≤ 4 GB ✅ |
-| Smallest heap it loads in | 384 MB (fails at 320 MB) | | |
-| A trip inside Lyon / Paris, typical (median) | 4.6–5.0 ms / 7.6–7.9 ms | | |
-| Slowest 5 % of searches (p95) | 38–46 ms | ≤ 30 ms ❌ | ≤ 50 ms ✅ |
-| Slowest 1 % of searches (p99) | 115–123 ms | — | ≤ 200 ms ✅ |
+| | raptor-kmp 2.2.0 | Phone target | Server target | 2.4.0-SNAPSHOT |
+|---|---|---|---|---|
+| Loading the network | 0.49–0.57 s | ≤ 3 s ✅ | — | 0.46 s |
+| Memory held once loaded | 257 MB | ≤ 512 MB ✅ (with `largeHeap`) | ≤ 4 GB ✅ | **124 MB** |
+| Smallest heap it loads in | 384 MB (fails at 320 MB) | | | **224 MB** |
+| A trip inside Lyon / Paris, typical (median) | 4.6–5.0 ms / 7.6–7.9 ms | | | 5.3 / 8.4 ms |
+| Slowest 5 % of searches (p95) | 38–46 ms | ≤ 30 ms ❌ | ≤ 50 ms ✅ | 36 ms ❌ |
+| Slowest 1 % of searches (p99) | 115–123 ms | — | ≤ 200 ms ✅ | 49 ms |
 
 **How to read it:**
 - **p95** is the time under which 95 % of searches finish. **p99** is the same for 99 %.
@@ -61,7 +67,8 @@ The catalogue and the reason for every feed kept or left out are in
 **Out:**
 - **Overseas regions.** They are not linked to the mainland and run on other time zones.
 - **On-demand transport.** It has no fixed timetable to route on.
-- **School-only networks.**
+- **School-only networks**, in the first verdict. Step 10 adds them (France complète), with
+  a switch to leave every school line out.
 - **A handful of networks whose open data has expired or vanished:** Ruban
   (Bourgoin-Jallieu), TAC, Ogalo, EVA'D, Mobilité en Velay, and the Corsican railway.
 - **Eurostar and the Channel ferries.** They add nothing within France: each of their
@@ -156,8 +163,8 @@ region up to 40 MB, France 257 MB once loaded.
 Loading needs more than that: about 400 MB at the peak, because the file and the
 network being built are in memory at the same time. So France connexe loads with a
 384 MB heap but not with 320 MB. Without `largeHeap`, many Android phones give an app
-192–256 MB, which is not enough. Building the network straight from the file, without
-intermediate objects, could bring the peak down.
+192–256 MB, which is not enough. That was raptor-kmp 2.2.0: steps 12–13 halve the network
+and lower the peak, see [A phone-sized engine](#a-phone-sized-engine).
 
 ## The pipeline
 
@@ -171,13 +178,121 @@ writes only one day. Reading only the day it writes would cut that a lot.
 | Peak memory | 9.3 GB | 9.6 GB |
 | Output (`stops.bin` + `routes.bin`) | 64 MB | 76 MB |
 
+## After the first verdict (steps 9–13)
+
+### Searching from an address
+
+The console searches addresses the way Pelo does: the public Photon geocoder, then the
+point itself handed to raptor-kmp (`Location.Point`), which walks to every stop within
+500 m, each with its own walk, and offers a walk-only trip under 1 km. When nothing is
+found, it searches again walking up to 6 km.
+
+**What it costs:** almost nothing. The engine builds a grid of the stops on the first
+address search, 7 MB on France. A search from an address then costs about what a search
+from all the stops around it costs, and is often *faster* than one from the single nearest
+stop: starting from the right stop of the neighbourhood shortens the search.
+
+| France connexe, median search | Paris (300 trips) | Lyon (300 trips) | Across France (1,000) |
+|---|---:|---:|---:|
+| From the nearest stop | 21.7 ms | 8.0 ms | 13.4 ms, 186 found |
+| From every stop within 500 m | 9.8 ms | 7.5 ms | 27.0 ms, 283 found |
+| **From the address** | **11.0 ms** | **8.3 ms** | **26.0 ms, 281 found** |
+
+Across France the address search is slower because it finds half as many trips again.
+Finding the address is a web request (0.1–0.3 s) that never touches the engine.
+→ `results/address_queries.csv`
+
+### Every school line, with a switch
+
+The 18 feeds that carry only school transport join a third layer of the catalogue, read
+by one more network, **France complète**. A line counts as a school line by one of five
+rules: its feed is school-only, its GTFS type says so (712/713, as for TCL's JD lines),
+its name says so ("ligne scolaire"), the feed's own naming (Rennes: Ts30…), or it serves
+a collège, lycée or école and runs at most 6 times that day. A line that merely ends at a
+lycée runs all day and stays a normal line.
+
+| | |
+|---|---|
+| School lines in France complète | 7,628 (2,427 school-only feeds, 3,220 by type, 1,526 "few runs", 417 by name, 38 by convention) |
+| Their trips on 24 November | 21,329, 4.3 % of the day |
+| France complète | 313,419 stops, 489,575 trips, 95 / 95 préfectures |
+
+The explorer's "lignes scolaires" switch leaves them out of a search. A real case:
+Saint-Jeannet → Logis du Pin at 06:40 takes school line 23S, 58 min; without school lines
+there is no trip at all, even walking 6 km. Leaving them out costs 3–4 ms per search
+(Lyon median 5.0 → 8.7 ms), because raptor-kmp checks every route against the list at each
+search: an engine fix to make. → `results/school_routes.csv`, `school_switch.csv`
+
+### Data that stay ahead
+
+raptor-kmp has no calendar: a network is one day's timetable. Pelo serves TCL, whose file
+covers months, with a few day types. For France the question is how far ahead *every*
+producer publishes, and the answer is weeks, not months:
+
+![How far ahead the feeds publish](results/feed_horizon.png)
+
+On 19 November 2026, every feed that matters still had timetables up to **18 December**,
+the last day of IDFM (27 % of the trips; it publishes about a month ahead). Six small
+feeds worth 0.28 % stop earlier (two ski shuttles between seasons, Pastel, Bourg-Saint-
+Maurice, Trenitalia, Pays de Gex). After that, half of the trips vanish at once.
+
+So the window **slides**: `python -m gtfs_bench.refresh`, meant to run every night,
+downloads what changed (several APIs rebuild an identical zip at each request, so a change
+is a change of the files inside), reports newer PAN files for the feeds about to stop,
+recomputes the window and rebuilds the network only when needed, about 10 minutes. The
+network, **france-live**, holds three day types, the timetables of a Tuesday, a Saturday
+and a Sunday; a date runs on its type, public holidays as Sundays:
+
+| france-live, data of 19 Nov | semaine | samedi | dimanche |
+|---|---:|---:|---:|
+| Trips | 487,666 | 316,621 | 151,732 |
+| Memory, raptor-kmp 2.2.0 | 274 MB | 236 MB | 212 MB |
+| Memory, 2.4.0-SNAPSHOT | 123 MB | 95 MB | 73 MB |
+
+### A phone-sized engine
+
+The class histogram of a loaded France showed where 2.2.0's memory went: every walking
+transfer as an object in a list per stop, copied twice more into arrays, an id → index
+map where ids are already indices, the same-name groups as maps of boxed lists. Steps 12
+and 13 rewrote that inside raptor-kmp (branch `perf/memory-256`, version
+`2.4.0-SNAPSHOT`), without changing its API:
+
+- transfers, routes per stop and same-name groups as flat arrays the search reads directly;
+- the transfers read from the file routed on in the very array the loader filled;
+- one period built at a time, file bytes let go as soon as they are read;
+- a search state of 20 bytes per stop and round instead of 32.
+
+| | 2.2.0 | 2.4.0-SNAPSHOT |
+|---|---:|---:|
+| France complète, memory held | 275 MB | **124 MB** |
+| France complète, smallest heap | 384 MB | **224 MB** |
+| France connexe, smallest heap | 384 MB | **192 MB** |
+| The three day types in turn | does not load in 256 MB | **all three in 224 MB** |
+| Random searches, p95 (complète) | 42 ms | 36 ms |
+
+**The journeys are identical**: every field of every journey of 2,500 fixed searches
+(forward, arrive-by, from addresses, without school lines), on Lyon and three France
+networks, hashes the same with both engines. → `results/engine_memory.csv`,
+`engine_periods.csv`
+
+### The console
+
+All of it can be driven from one terminal app, `python -m gtfs_bench.console`: itinerary
+and map, the catalogue (edited, with backups), the converted networks, every step of the
+notebook and the measurements as actions with their output, the settings, the results and
+the guide. The guide, with screenshots, is [`docs/guide-console.pdf`](docs/guide-console.pdf).
+
 ## Limits
 
 - **No phone was measured.** Memory figures carry over to Android, since the same data
-  is allocated. Times do not.
-- **One day.** Everything is for Tuesday 24 November 2026. A trip that needs two days (a
-  night ferry, then a morning connection) cannot be found. Weekends and holidays have
-  fewer trips.
+  is allocated. Times do not. ART also stores accented names and object headers
+  differently: the 32 MB left under 256 MB should cover it, unmeasured.
+- **One timetable per day type.** A weekday runs on the Tuesday's timetable, so a
+  Wednesday-only or Friday-only trip is missing. A trip that needs two days (a night
+  ferry, then a morning connection) cannot be found. The window is the stretch every
+  important producer has published: weeks, never months.
+- **School lines are found by rules**, not declared by the producers: a few may be missed
+  or wrongly tagged (`results/school_routes.csv` lists them all, with the rule).
 - **No booking rules.** The pipeline ignores pick-up and drop-off restrictions. FlixBus
   and BlaBlaCar declare none, so nothing is lost there. A coach "à réservation" is
   treated like any other.
@@ -188,13 +303,16 @@ writes only one day. Reading only the day it writes would cut that a lot.
 ## What to do next
 
 **In raptor-kmp:**
-1. **Limit same-name links by distance**, or drop them in favour of `transfers.txt`. Then
-   no merged network needs the renaming workaround.
+1. **Release 2.4.0** from `perf/memory-256` (flat network, one period at a time, smaller
+   search state: done, identical journeys), and let Pelo use
+   `RaptorLibrary(periods, keepAllPeriods = false)` for its day types.
 2. **Reset only what the previous search touched.** This brings a city trip on France back
    close to its cost on the city alone. It is the change that should get phones under
    30 ms. That is an estimate, to measure once done.
-3. **Build the network without intermediate objects**, to load France in less than
-   384 MB.
+3. **Check blocked routes in a mask built once**, not route by route at each search: the
+   school-line switch would then cost nothing.
+4. **Limit same-name links by distance**, or drop them in favour of `transfers.txt`. Then
+   no merged network needs the renaming workaround.
 
 **In the pipeline:**
 1. **Merge the "one route per stop sequence" fix** (commit `273aac0`), after checking that
@@ -203,7 +321,8 @@ writes only one day. Reading only the day it writes would cut that a lot.
 2. **Read only the day being converted**, to bring France well under 10 GB.
 3. Pin the Gradle daemon to JDK 21: Kotlin 2.1.0 fails on JDK 25.
 
-**In the benchmark:** measure on a real phone, with France connexe and `largeHeap`.
+**In the benchmark:** measure on a real phone, with france-live and raptor-kmp 2.4.0;
+schedule the daily refresh (console, Actions → "Planifier la mise à jour quotidienne").
 
 ## How it was measured
 
@@ -352,8 +471,13 @@ cd notebooks && ../.venv/Scripts/python -m jupyter nbconvert --to notebook --exe
 
 ```bash
 .venv/Scripts/python -m gtfs_bench.variants   # same-name links, optional
-.venv/Scripts/python -m gtfs_bench.connected  # the three France networks (step 8), ~20 min
+.venv/Scripts/python -m gtfs_bench.connected  # the France networks (steps 8 and 10), ~25 min each
+.venv/Scripts/python -m gtfs_bench.engine --addresses      # step 9
+.venv/Scripts/python -m gtfs_bench.refresh                 # step 11: france-live and the window
+.venv/Scripts/python -m gtfs_bench.engines compare 2.2.0 2.4.0-SNAPSHOT   # steps 12-13, see README
 ```
+
+Or all of it from the console: `.venv/Scripts/python -m gtfs_bench.console`, tab Actions.
 
 Feeds change every day. A rerun picks another reference day and other versions, and
 `results/feeds_used.csv` records which.

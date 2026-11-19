@@ -1,0 +1,188 @@
+{
+ "tier": "france-live",
+ "status": "ok",
+ "failedDuring": null,
+ "error": null,
+ "engineVersion": "2.4.0-SNAPSHOT",
+ "java": "21.0.7+6-LTS",
+ "maxHeapMb": 256,
+ "files": null,
+ "network": null,
+ "load": null,
+ "heap": {
+  "retainedMb": 123.2798843383789,
+  "peakMb": 276.02420806884766
+ },
+ "querySets": [
+  {
+   "name": "semaine:random",
+   "direction": "forward",
+   "queries": 1000,
+   "found": 196,
+   "latencyMs": {
+    "mean": 10.939849699999991,
+    "p50": 7.6162,
+    "p90": 26.0938,
+    "p95": 33.3701,
+    "p99": 43.2056,
+    "max": 55.2861
+   },
+   "medianDurationMin": 391.0,
+   "medianTransitLegs": 5.0,
+   "note": null
+  },
+  {
+   "name": "semaine:random",
+   "direction": "arrive_by",
+   "queries": 300,
+   "found": 6,
+   "latencyMs": {
+    "mean": 16.27718533333334,
+    "p50": 12.1327,
+    "p90": 35.2384,
+    "p95": 42.4143,
+    "p99": 57.6415,
+    "max": 65.4241
+   },
+   "medianDurationMin": 70.4,
+   "medianTransitLegs": 3.0,
+   "note": null
+  },
+  {
+   "name": "semaine:address",
+   "direction": "forward",
+   "queries": 300,
+   "found": 84,
+   "latencyMs": {
+    "mean": 17.794135666666666,
+    "p50": 14.8785,
+    "p90": 37.2295,
+    "p95": 43.8975,
+    "p99": 51.1525,
+    "max": 58.4963
+   },
+   "medianDurationMin": 393.46666666666664,
+   "medianTransitLegs": 5.0,
+   "note": null
+  },
+  {
+   "name": "samedi:random",
+   "direction": "forward",
+   "queries": 1000,
+   "found": 158,
+   "latencyMs": {
+    "mean": 7.5790041,
+    "p50": 3.5946,
+    "p90": 19.6132,
+    "p95": 24.5321,
+    "p99": 32.7121,
+    "max": 45.3216
+   },
+   "medianDurationMin": 395.0,
+   "medianTransitLegs": 5.0,
+   "note": null
+  },
+  {
+   "name": "samedi:random",
+   "direction": "arrive_by",
+   "queries": 300,
+   "found": 5,
+   "latencyMs": {
+    "mean": 9.885152,
+    "p50": 7.2833,
+    "p90": 23.1882,
+    "p95": 27.2143,
+    "p99": 35.103,
+    "max": 40.7052
+   },
+   "medianDurationMin": 77.56666666666666,
+   "medianTransitLegs": 3.0,
+   "note": null
+  },
+  {
+   "name": "samedi:address",
+   "direction": "forward",
+   "queries": 300,
+   "found": 70,
+   "latencyMs": {
+    "mean": 12.741112666666666,
+    "p50": 9.9949,
+    "p90": 28.0664,
+    "p95": 30.8533,
+    "p99": 38.9849,
+    "max": 41.5344
+   },
+   "medianDurationMin": 399.51666666666665,
+   "medianTransitLegs": 5.0,
+   "note": null
+  },
+  {
+   "name": "dimanche:random",
+   "direction": "forward",
+   "queries": 1000,
+   "found": 65,
+   "latencyMs": {
+    "mean": 4.3451695999999975,
+    "p50": 2.6349,
+    "p90": 12.726,
+    "p95": 16.4861,
+    "p99": 22.0012,
+    "max": 32.2363
+   },
+   "medianDurationMin": 402.0,
+   "medianTransitLegs": 5.0,
+   "note": null
+  },
+  {
+   "name": "dimanche:random",
+   "direction": "arrive_by",
+   "queries": 300,
+   "found": 4,
+   "latencyMs": {
+    "mean": 5.969978000000002,
+    "p50": 4.157,
+    "p90": 16.0009,
+    "p95": 20.6915,
+    "p99": 24.9586,
+    "max": 29.6067
+   },
+   "medianDurationMin": 82.71666666666667,
+   "medianTransitLegs": 4.0,
+   "note": null
+  },
+  {
+   "name": "dimanche:address",
+   "direction": "forward",
+   "queries": 300,
+   "found": 37,
+   "latencyMs": {
+    "mean": 7.616485666666666,
+    "p50": 4.8388,
+    "p90": 18.5402,
+    "p95": 21.1502,
+    "p99": 25.4375,
+    "max": 27.9012
+   },
+   "medianDurationMin": 396.6333333333333,
+   "medianTransitLegs": 4.0,
+   "note": null
+  }
+ ],
+ "scenarios": [],
+ "extras": {
+  "semaine.buildMs": 518.0828,
+  "semaine.retainedMb": 123.2798843383789,
+  "samedi.buildMs": 406.7207,
+  "samedi.retainedMb": 94.60783386230469,
+  "dimanche.buildMs": 258.2818,
+  "dimanche.retainedMb": 72.71570587158203
+ },
+ "golden": {},
+ "goldenQueries": {},
+ "process": {
+  "xmx": "256m",
+  "exit_code": 0,
+  "seconds": 51.7,
+  "peak_working_set_mb": 319
+ }
+}

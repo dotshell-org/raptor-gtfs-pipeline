@@ -42,7 +42,13 @@ There are two data layers:
 | 5 | Pipeline conversion, measured | `gtfs_bench/convert.py` | done |
 | 6 | Engine harness (`:benchmark-engine`) | `engine/` + `gtfs_bench/engine.py` | done |
 | 7 | Report | [`RESULTS.md`](RESULTS.md) | done |
-| 8 | Long-distance layer, connected France | catalogue + `gtfs_bench/connected.py`, `connectivity.py` | in review |
+| 8 | Long-distance layer, connected France | catalogue + `gtfs_bench/connected.py`, `connectivity.py` | done |
+| 9 | Address search in the explorer, and its cost | `gtfs_bench/explorer/geocode.py`, harness `--mode points` | done |
+| 10 | Every school line, with a switch | catalogue `scolaire` layer, `gtfs_bench/school.py`, explorer | done |
+| 11 | Feed horizon, three day types, daily refresh | `gtfs_bench/horizon.py`, `refresh.py`, `refresh.ps1` | done |
+| 12 | Engine memory, the network: 275 → 124 MB, fits 224m | raptor-kmp `perf/memory-256`, `gtfs_bench/engines.py` | done |
+| 13 | Engine memory, search state, load peak, one day type at a time: 3 day types under 224m | raptor-kmp `perf/memory-256` | done |
+| 14 | Console with every step and setting, its PDF guide, report update | `gtfs_bench/console.py`, `docs/`, `RESULTS*.md` | in review |
 
 ## Setup
 
@@ -166,8 +172,18 @@ Two variants of the France tier, each changing one thing, merged into
 - **`france-connexe`:** the same, plus the catalogue's `longue_distance` rows and wider
   links around the stations of national networks (`MergeParams.stations`: 500 m and 60
   neighbours from a station's stops, and every pair of SNCF stops sharing a UIC code).
+- **`france-complete`** (step 10): france-connexe plus the `scolaire` rows, the 18 feeds
+  that carry only school transport (`--variants france-complete`).
 
 Each one, and the regional France as it is, then gets:
+
+- its **school lines** (`gtfs_bench/school.py`): which lines are school lines, by the
+  catalogue (`school` column), the GTFS school route types 712/713, the name, or a line
+  serving a school with at most 6 runs that day. They go to `school_routes.json` next to the
+  `.bin` files, as the route numbers raptor-kmp knows them, checked against the engine's own
+  names; the full list for review is `results/school_routes.csv` (per feed:
+  `results/school_feeds.csv`). The harness then times the same trips with and without them
+  (`--mode school`, `results/school_switch.csv`);
 
 - the engine harness at 5 rounds (the default) and at 8, and heap checks at 384m, 512m
   and 1g;
@@ -179,24 +195,151 @@ Each one, and the regional France as it is, then gets:
 
 The explorer opens any of them: `python -m gtfs_bench.explorer --tier france-connexe`.
 
+## Live network: the feeds' horizon, three day types, a daily refresh (step 11)
+
+```bash
+python -m gtfs_bench.horizon     # today's window: results/feed_horizon.{csv,png}, results/horizon.json
+python -m gtfs_bench.refresh     # download, recompute, rebuild data/raptor/france-live if needed
+```
+
+raptor-kmp has no calendar: one network is one day's timetable. Pelo serves TCL, whose file
+covers months, with a few day types. For France the file is the sum of 250 producers', and
+most publish only a few weeks ahead (IDFM about a month), so:
+
+- **The window** (`gtfs_bench/horizon.py`) runs from today to the day before the first feed
+  that matters stops publishing: one carrying more than 0.5 % of the trips, or the one that
+  takes the small feeds already stopped past 1 % together. The small ones that stop earlier
+  are listed (a ski shuttle between two seasons, a network whose next file is not out yet).
+  On 19 November 2026: to 18 December, set by IDFM (27 % of the trips; it had published
+  one more day by the evening); six feeds worth 0.28 % stop before.
+- **The day types**: the timetables of a Tuesday, a Saturday and a Sunday of the earliest
+  week ahead (whole weeks, so the normalized feeds stay cached), plus a holiday Tuesday when
+  the window reaches national school holidays (Christmas, summer). A date runs on its day
+  type; public holidays run as Sundays, as in Pelo.
+- **The live network** `data/raptor/france-live/` holds one folder per day type (the same
+  feeds as `france-complete`, the pipeline run with one period per day type), each with its
+  `school_routes.json`, plus `horizon.json` (the window) and `refresh.json` (the last run).
+- **The daily refresh** (`gtfs_bench/refresh.py`) keeps it ahead: it downloads every feed
+  (conditional requests, so an unchanged one costs a round trip; a feed that fails keeps
+  its last good file), asks the PAN for newer resources of the feeds about to stop (reported,
+  not added: the catalogue stays curated), recomputes the window, and rebuilds only when a
+  feed changed or the day types moved. "Changed" means the files inside the zip (names,
+  sizes, CRC-32 in `data/raw/content_signatures.json`): several APIs (Cityway, DataSud)
+  build the zip afresh at each request, so its bytes change when its timetables do not.
+  The new network is built next to the old one and
+  swapped in at the end. Its log is `data/logs/refresh-<date>.log`. About 10 minutes and
+  10 GB of RAM when it rebuilds.
+
+For the Windows task scheduler, `refresh.ps1` runs it from the venv (`.\refresh.ps1 --force`
+passes options on). A daily task at 4:00 that also runs at the next wake-up when the PC
+slept through it:
+
+```powershell
+$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$PWD\refresh.ps1`""
+Register-ScheduledTask -TaskName "raptor-gtfs-refresh" -Action $action -Trigger (New-ScheduledTaskTrigger -Daily -At 4am) -Settings (New-ScheduledTaskSettingsSet -StartWhenAvailable)
+```
+
+The benchmark numbers stay those of the reference day (24 November); every result file
+from step 11 on says the date of the data it was measured on.
+
+## Engine memory: raptor-kmp on a phone-sized heap (steps 12–13)
+
+The work is in raptor-kmp itself (branch `perf/memory-256` of that repository, version
+`2.4.0-SNAPSHOT`); this side compares engine builds on the same networks:
+
+```bash
+python -m gtfs_bench.engines publish                          # ../raptor-kmp working copy -> ~/.m2
+python -m gtfs_bench.engines install 2.2.0                    # harness on Maven Central's 2.2.0
+python -m gtfs_bench.engines install 2.4.0-SNAPSHOT --local   # harness on the local build
+python -m gtfs_bench.engines compare 2.2.0 2.4.0-SNAPSHOT     # ~1 h
+```
+
+Each harness build lives in `data/tmp/engines/<version>/`; `build/install` keeps the default
+engine for the explorer. `-PraptorKmpLocal` adds `mavenLocal()` to the build's repositories
+(only then). raptor-kmp's build needs `-Pandroid.builtInKotlin=false -Pandroid.newDsl=false`
+with AGP 9 and an Android SDK (`ANDROID_HOME`, default `%LOCALAPPDATA%\Android\Sdk`).
+
+`compare` runs, on Lyon and three France networks:
+
+- **golden journeys** (harness `--mode golden`): every journey of 2,500 fixed queries (random
+  stop pairs forward and arrive-by, the Lyon and Paris local sets, addresses forward and
+  arrive-by, 200 searches without the school lines), hashed field by field. An optimization
+  must give the very same hashes;
+- the **retained heap** and the JVM's **class histogram** of the loaded network
+  (`results/engine/memory/histogram/`);
+- the **full timing run**, and the **smallest heap** (128m, 160m, 192m…) that loads the
+  network and answers 200 queries, the files read as an app reads them (`--load files`:
+  raptor-kmp gets providers and reads one file at a time; `--load bytes`, both files read
+  first, is how step 12 measured);
+- the **live network's day types** one after the other in one JVM (`--mode periods`: build
+  semaine, let it go, build samedi…, each answering random and address queries), under
+  256m, then smaller ceilings down to the first that fails (`results/engine_periods.csv`).
+
+Summary in `results/engine_memory.csv`; details in `results/engine/memory/`.
+
+With raptor-kmp `2.4.0-SNAPSHOT` (journeys identical to 2.2.0 everywhere): France complete
+holds 124 MB instead of 275 and fits -Xmx224m instead of 384m; France connexe fits 192m;
+the three day types of the live network run one after the other under 224m (2.2.0 cannot
+build the first under 256m). Queries are 10 to 25 % faster.
+
+## The console: everything from one terminal (step 14)
+
+```bash
+.venv/Scripts/python -m gtfs_bench.console
+```
+
+A Textual app with seven tabs (F1–F7): **Itinéraire** (the explorer below, with a map you
+can zoom and pan, city and stop names, a scale and a legend), **Catalogue** (browse, filter
+and edit `catalog/gtfs_france.csv`, with a backup at each save, and download a feed),
+**Réseaux** (every converted network, opened in the itinerary in one click), **Actions**
+(every step of the notebook and every measurement as a command with live output: daily
+refresh, horizon, scheduled task, downloads, catalogue check, conversion, France variants,
+school lines, the whole notebook, engine benchmarks, engine comparison, tests, this
+guide), **Paramètres** (`gtfs_bench/settings.py`, saved to `settings.json`, read by the
+modules, the notebook's configuration cell and the engine), **Résultats** (reports and
+every CSV of `results/`) and **Aide**.
+
+The user guide, in French with screenshots, is [`docs/guide-console.pdf`](docs/guide-console.pdf)
+(source `docs/GUIDE.md`, rebuilt by `python -m gtfs_bench.guide`: screenshots of the real
+console, HTML, then PDF through Microsoft Edge).
+
 ## Explorer: try the engine yourself
 
 `python -m gtfs_bench.explorer` opens a terminal app on top of the real engine. raptor-kmp
-runs in a JVM with France loaded once, and you pick two stops anywhere in it:
+runs in a JVM with France loaded once, and you pick two stops or addresses anywhere in it:
 
 - **Search:** type a few letters of a stop. Case and accents do not matter, and the commune
   counts too ("lyon gambetta"). A place is every stop sharing a name. Enter or a click
   picks it.
-- **Time:** a departure time, or "arriver avant" for arrive-by. The day is the
-  benchmark's reference day (Tuesday 24 November 2026): the tiers are converted for that
-  day only. Times past 24:00 reach that day's late-night trips (25:30 = 01:30 the next
-  morning). The previous evening's trips running past midnight are not in the network, so
-  very early mornings look emptier than they are.
+- **Addresses:** below the stops, an "Adresses · Photon" section lists addresses and named
+  places ("20 rue de la Paix Paris", "Tour Eiffel"), found as Pelo finds them: the public
+  [Photon](https://photon.komoot.io) geocoder, from 3 characters, once typing pauses, 6
+  results, mainland France only, leaning towards the other end once it is chosen. The typed
+  text goes to photon.komoot.io; answers are cached in `data/tmp/explorer/geocode.json`, and
+  offline the section just stays empty. The engine gets the point itself
+  (`Location.Point`, raptor-kmp's own address search) and walks to every stop within 500 m,
+  at 4.8 km/h with a 1.3 detour factor, or the whole way when under 1 km. When that finds
+  nothing, it searches again walking up to 6 km, as Pelo does, and says so. What it costs:
+  `python -m gtfs_bench.engine --addresses` (results/address_queries.csv).
+- **Date:** on the live network (`france-live`, the default once `gtfs_bench.refresh` has
+  built it), any date from today to the end of its window. Each date runs on its day type:
+  a weekday on the representative Tuesday's timetable, a Saturday on the Saturday's, a
+  Sunday or public holiday on the Sunday's. Switching day type reloads the engine (about
+  a second). The benchmark tiers (`--tier france-complete`…) have one day: the reference
+  Tuesday, 24 November 2026.
+- **Time:** a departure time, or "arriver avant" for arrive-by. Times past 24:00 reach the
+  day's late-night trips (25:30 = 01:30 the next morning). The previous evening's trips
+  running past midnight are not in the network, so very early mornings look emptier than
+  they are.
 - **Changes:** "correspondances max", 0 to 99 (− / + or type it, Enter). This is RAPTOR's
   round limit minus one; the engine's default is 4. High values make for absurd itineraries.
   Each extra round costs about 9.4 MB of search state on France, which is why the explorer
   starts the engine with `-Xmx2g`. Below that, a very high limit answers "pas assez de
   mémoire" and the engine keeps running.
+- **School lines:** the "lignes scolaires" switch leaves every school line out of the
+  search (raptor-kmp's `blockedRouteIds`) and searches again. It works on any network
+  converted with its `school_routes.json` (`gtfs_bench.connected` writes one per variant);
+  `--tier france-complete` also has the school-only networks.
 - **Result:** the itinerary, leg by leg, with lines, stops and walks, and the alternatives
   raptor-kmp returns (fewer changes against earlier arrival). The time shown is the
   raptor-kmp call alone, measured inside the JVM.

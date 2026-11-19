@@ -18,6 +18,11 @@ data class Report(
     val heap: Heap? = null,
     val querySets: List<QuerySet> = emptyList(),
     val scenarios: List<Scenario> = emptyList(),
+    /** Single figures a mode adds, e.g. points mode: the heap the address search adds. */
+    val extras: Map<String, Double> = emptyMap(),
+    /** golden mode: one hash per query set over every journey returned, and per query. */
+    val golden: Map<String, String> = emptyMap(),
+    val goldenQueries: Map<String, List<String>> = emptyMap(),
 )
 
 @Serializable
