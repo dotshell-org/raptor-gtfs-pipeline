@@ -21,8 +21,8 @@
  },
  "load": null,
  "heap": {
-  "retainedMb": 119.87017822265625,
-  "peakMb": 413.69019317626953
+  "retainedMb": 120.01725006103516,
+  "peakMb": 382.4425811767578
  },
  "querySets": [],
  "scenarios": [],
@@ -2761,7 +2761,7 @@
  "process": {
   "xmx": "2g",
   "exit_code": 0,
-  "seconds": 86.6,
-  "peak_working_set_mb": 516
+  "seconds": 38.9,
+  "peak_working_set_mb": 543
  }
 }

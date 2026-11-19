@@ -1,0 +1,24 @@
+{
+ "tier": "france-live-semaine",
+ "status": "out_of_memory",
+ "failedDuring": "queries",
+ "error": "java.lang.OutOfMemoryError: Java heap space",
+ "engineVersion": "2.4.0-SNAPSHOT",
+ "java": "21.0.7+6-LTS",
+ "maxHeapMb": 160,
+ "files": null,
+ "network": null,
+ "load": null,
+ "heap": null,
+ "querySets": [],
+ "scenarios": [],
+ "extras": {},
+ "golden": {},
+ "goldenQueries": {},
+ "process": {
+  "xmx": "160m",
+  "exit_code": 2,
+  "seconds": 2.4,
+  "peak_working_set_mb": 247
+ }
+}

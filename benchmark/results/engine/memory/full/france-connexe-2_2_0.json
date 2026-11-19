@@ -20,18 +20,18 @@
   "largestNameGroup": 23
  },
  "load": {
-  "coldReadMs": 89.5647,
-  "coldBuildMs": 671.3354,
+  "coldReadMs": 59.8606,
+  "coldBuildMs": 507.3159,
   "warmBuildMs": [
-   993.9191,
-   844.1532,
-   765.2122
+   364.8734,
+   366.9262,
+   386.0209
   ],
-  "warmBuildMedianMs": 844.1532
+  "warmBuildMedianMs": 366.9262
  },
  "heap": {
-  "retainedMb": 259.78462982177734,
-  "peakMb": 963.0474243164062
+  "retainedMb": 259.75677490234375,
+  "peakMb": 824.9905090332031
  },
  "querySets": [
   {
@@ -40,12 +40,12 @@
    "queries": 1000,
    "found": 183,
    "latencyMs": {
-    "mean": 34.36411101299996,
-    "p50": 22.0014,
-    "p90": 87.9785,
-    "p95": 104.9452,
-    "p99": 147.612199,
-    "max": 185.5981
+    "mean": 13.5988043,
+    "p50": 10.2547,
+    "p90": 30.6056,
+    "p95": 37.6744,
+    "p99": 50.7488,
+    "max": 64.8419
    },
    "medianDurationMin": 416.0,
    "medianTransitLegs": 5.0,
@@ -57,12 +57,12 @@
    "queries": 1000,
    "found": 10,
    "latencyMs": {
-    "mean": 41.954395109999986,
-    "p50": 31.9381,
-    "p90": 92.711601,
-    "p95": 116.4318,
-    "p99": 155.123099,
-    "max": 269.7773
+    "mean": 17.79577140000001,
+    "p50": 14.7088,
+    "p90": 36.2681,
+    "p95": 42.4078,
+    "p99": 56.3756,
+    "max": 112.0618
    },
    "medianDurationMin": 91.51666666666667,
    "medianTransitLegs": 4.0,
@@ -74,12 +74,12 @@
    "queries": 300,
    "found": 291,
    "latencyMs": {
-    "mean": 11.30991098,
-    "p50": 8.324,
-    "p90": 18.950901,
-    "p95": 26.890699,
-    "p99": 58.3047,
-    "max": 150.6614
+    "mean": 5.618676333333337,
+    "p50": 4.7593,
+    "p90": 8.145,
+    "p95": 10.8295,
+    "p99": 23.3784,
+    "max": 51.2949
    },
    "medianDurationMin": 33.0,
    "medianTransitLegs": 3.0,
@@ -91,12 +91,12 @@
    "queries": 300,
    "found": 291,
    "latencyMs": {
-    "mean": 33.51829301333334,
-    "p50": 25.7558,
-    "p90": 48.5488,
-    "p95": 67.7075,
-    "p99": 282.5568,
-    "max": 354.415301
+    "mean": 15.576049999999999,
+    "p50": 12.5922,
+    "p90": 20.9366,
+    "p95": 27.661,
+    "p99": 112.0805,
+    "max": 139.6747
    },
    "medianDurationMin": 29.133333333333333,
    "medianTransitLegs": 3.0,
@@ -108,12 +108,12 @@
    "queries": 300,
    "found": 297,
    "latencyMs": {
-    "mean": 20.642161370000004,
-    "p50": 17.5123,
-    "p90": 33.8176,
-    "p95": 37.9323,
-    "p99": 61.1827,
-    "max": 198.4106
+    "mean": 9.027773666666663,
+    "p50": 7.9073,
+    "p90": 13.4982,
+    "p95": 16.079,
+    "p99": 23.5008,
+    "max": 69.1432
    },
    "medianDurationMin": 35.0,
    "medianTransitLegs": 3.0,
@@ -125,12 +125,12 @@
    "queries": 300,
    "found": 297,
    "latencyMs": {
-    "mean": 54.575848940000014,
-    "p50": 44.0841,
-    "p90": 87.8791,
-    "p95": 108.941599,
-    "p99": 263.8976,
-    "max": 312.200801
+    "mean": 23.57722500000001,
+    "p50": 20.2788,
+    "p90": 34.2318,
+    "p95": 41.4518,
+    "p99": 111.1625,
+    "max": 152.8742
    },
    "medianDurationMin": 32.0,
    "medianTransitLegs": 3.0,
@@ -145,7 +145,7 @@
    "destinationStops": 30,
    "departure": "08:00",
    "found": true,
-   "latencyMs": 6.2948,
+   "latencyMs": 4.0868,
    "arrival": "08:10",
    "durationMin": 10,
    "transitLegs": 2,
@@ -162,7 +162,7 @@
    "destinationStops": 16,
    "departure": "08:00",
    "found": true,
-   "latencyMs": 9.487,
+   "latencyMs": 5.0308,
    "arrival": "08:18",
    "durationMin": 18,
    "transitLegs": 2,
@@ -179,7 +179,7 @@
    "destinationStops": 20,
    "departure": "08:00",
    "found": true,
-   "latencyMs": 11.4047,
+   "latencyMs": 6.2152,
    "arrival": "08:19",
    "durationMin": 19,
    "transitLegs": 2,
@@ -196,7 +196,7 @@
    "destinationStops": 13,
    "departure": "08:00",
    "found": true,
-   "latencyMs": 17.6351,
+   "latencyMs": 8.6762,
    "arrival": "08:53",
    "durationMin": 53,
    "transitLegs": 2,
@@ -213,7 +213,7 @@
    "destinationStops": 20,
    "departure": "08:00",
    "found": true,
-   "latencyMs": 22.0868,
+   "latencyMs": 10.1838,
    "arrival": "09:39",
    "durationMin": 99,
    "transitLegs": 1,
@@ -229,7 +229,7 @@
    "destinationStops": 21,
    "departure": "08:00",
    "found": true,
-   "latencyMs": 17.1147,
+   "latencyMs": 8.338,
    "arrival": "10:54",
    "durationMin": 174,
    "transitLegs": 1,
@@ -245,7 +245,7 @@
    "destinationStops": 31,
    "departure": "07:00",
    "found": true,
-   "latencyMs": 21.576,
+   "latencyMs": 10.3963,
    "arrival": "09:02",
    "durationMin": 122,
    "transitLegs": 1,
@@ -261,7 +261,7 @@
    "destinationStops": 16,
    "departure": "07:00",
    "found": true,
-   "latencyMs": 73.674801,
+   "latencyMs": 30.1772,
    "arrival": "14:30",
    "durationMin": 450,
    "transitLegs": 4,
@@ -280,7 +280,7 @@
    "destinationStops": 34,
    "departure": "07:00",
    "found": true,
-   "latencyMs": 84.2422,
+   "latencyMs": 34.5868,
    "arrival": "12:14",
    "durationMin": 314,
    "transitLegs": 3,
@@ -298,7 +298,7 @@
    "destinationStops": 15,
    "departure": "07:00",
    "found": true,
-   "latencyMs": 154.989999,
+   "latencyMs": 63.4792,
    "arrival": "16:06",
    "durationMin": 546,
    "transitLegs": 3,
@@ -316,7 +316,7 @@
  "process": {
   "xmx": "2g",
   "exit_code": 0,
-  "seconds": 129.6,
-  "peak_working_set_mb": 1318
+  "seconds": 56.9,
+  "peak_working_set_mb": 1182
  }
 }

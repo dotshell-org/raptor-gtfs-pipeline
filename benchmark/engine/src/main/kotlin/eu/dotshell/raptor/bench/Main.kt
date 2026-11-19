@@ -1,6 +1,7 @@
 package eu.dotshell.raptor.bench
 
 import io.raptor.Location
+import io.raptor.PeriodData
 import io.raptor.RaptorLibrary
 import io.raptor.WalkingParams
 import io.raptor.core.JourneyLeg
@@ -46,6 +47,12 @@ private class Options(args: Array<String>) {
     val maxRounds = values["max-rounds"]?.toInt() ?: 5
     /** Where to write the class histogram of the loaded network (what the heap holds, by class). */
     val histogram = values["histogram"]?.let(::File)
+    /**
+     * bytes: read both files, then build (both arrays alive during the build, as before).
+     * files: give raptor-kmp providers that read each file when it needs it, as an app does:
+     * at most one file's bytes alive at a time, none kept.
+     */
+    val load = values["load"] ?: "bytes"
 }
 
 fun main(args: Array<String>) {
@@ -87,21 +94,22 @@ private fun msSince(start: Long) = (System.nanoTime() - start) / 1e6
 private fun run(options: Options): Report {
     val stopsFile = File(options.data, "stops.bin")
     val routesFile = File(options.data, "routes.bin")
-    require(stopsFile.exists() && routesFile.exists()) { "no stops.bin / routes.bin in ${options.data}" }
-
     collect()
     resetPeaks()
     val baseline = usedHeapMb()
+    if (options.mode == "periods") return periodsRun(options, baseline)
+    require(stopsFile.exists() && routesFile.exists()) { "no stops.bin / routes.bin in ${options.data}" }
 
     phase = "read"
     var started = System.nanoTime()
-    var stopsBytes: ByteArray? = stopsFile.readBytes()
-    var routesBytes: ByteArray? = routesFile.readBytes()
+    var stopsBytes: ByteArray? = if (options.load == "files") null else stopsFile.readBytes()
+    var routesBytes: ByteArray? = if (options.load == "files") null else routesFile.readBytes()
     val coldRead = msSince(started)
 
     phase = "build"
     started = System.nanoTime()
-    var library = RaptorLibrary(stopsBytes!!, routesBytes!!)
+    var library = if (options.load == "files") fileLibrary(options.data)
+                  else RaptorLibrary(stopsBytes!!, routesBytes!!)
     val period = library.getCurrentPeriod()
     library.getStops(period)  // the network is built lazily: force it, as raptor-kmp's LoadBenchmark does
     val coldBuild = msSince(started)
@@ -199,6 +207,52 @@ private fun run(options: Options): Report {
         scenarios = scenarios,
         extras = extras,
     )
+}
+
+/** A library whose files are read when raptor-kmp builds the network, not before. */
+private fun fileLibrary(dir: File, name: String = "bench") = RaptorLibrary(listOf(
+    PeriodData(name, { File(dir, "stops.bin").readBytes() }, { File(dir, "routes.bin").readBytes() })))
+
+/**
+ * A live network's day types one after the other in one JVM, as an app switching dates: each
+ * is built from its files once the previous one is let go, then answers random queries forward
+ * and arrive-by and address queries. Run under a small -Xmx, it tells whether every day type
+ * fits, and the peak heap of the whole run.
+ */
+private fun periodsRun(options: Options, baseline: Double): Report {
+    val dirs = options.data.listFiles { f -> f.isDirectory && File(f, "routes.bin").exists() }.orEmpty()
+        .sortedBy { listOf("semaine", "samedi", "dimanche", "vacances").indexOf(it.name).let { i -> if (i < 0) 99 else i } }
+    require(dirs.isNotEmpty()) { "no day type folders in ${options.data}" }
+    val querySets = mutableListOf<QuerySet>()
+    val extras = linkedMapOf<String, Double>()
+    var library: RaptorLibrary? = null
+    for (dir in dirs) {
+        phase = "build ${dir.name}"
+        library = null
+        collect()
+        val started = System.nanoTime()
+        val lib = fileLibrary(dir, dir.name)
+        library = lib
+        val stops = lib.getStops(dir.name)
+        extras["${dir.name}.buildMs"] = msSince(started)
+        collect()
+        extras["${dir.name}.retainedMb"] = usedHeapMb() - baseline
+        phase = "queries ${dir.name}"
+        val ids = stops.map { it.id }
+        val random = randomQueries(ids, options.queries, options.seed)
+        randomQueries(ids, 100, options.seed + 1).forEach { forward(lib, it, options.maxRounds) }
+        querySets += timeSet("${dir.name}:random", "forward", random) { forward(lib, it, options.maxRounds) }
+        querySets += timeSet("${dir.name}:random", "arrive_by", random.take(300).map { it.copy(time = it.time + 3600) }) {
+            arriveBy(lib, it, options.maxRounds)
+        }
+        querySets += timeAll("${dir.name}:address", "forward", randomPoints(stops, 300, options.seed), { it.time }) { p ->
+            lib.getOptimizedPaths(Location.Point(p.oLat, p.oLon), Location.Point(p.dLat, p.dLon), p.time, maxRounds = options.maxRounds)
+        }
+    }
+    phase = "done"
+    return base(options).copy(heap = Heap(retainedMb = extras.filterKeys { it.endsWith("retainedMb") }.values.maxOrNull() ?: 0.0,
+                                          peakMb = peakHeapMb()),
+                              querySets = querySets, extras = extras)
 }
 
 /** Every field of every journey, in order: two engines that agree here return the same thing. */

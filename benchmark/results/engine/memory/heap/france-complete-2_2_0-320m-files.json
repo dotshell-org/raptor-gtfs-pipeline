@@ -1,0 +1,24 @@
+{
+ "tier": "france-complete",
+ "status": "out_of_memory",
+ "failedDuring": "queries",
+ "error": "java.lang.OutOfMemoryError: Java heap space",
+ "engineVersion": "2.2.0",
+ "java": "21.0.7+6-LTS",
+ "maxHeapMb": 320,
+ "files": null,
+ "network": null,
+ "load": null,
+ "heap": null,
+ "querySets": [],
+ "scenarios": [],
+ "extras": {},
+ "golden": {},
+ "goldenQueries": {},
+ "process": {
+  "xmx": "320m",
+  "exit_code": 2,
+  "seconds": 2.8,
+  "peak_working_set_mb": 388
+ }
+}

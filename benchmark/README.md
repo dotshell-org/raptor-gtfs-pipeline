@@ -46,8 +46,8 @@ There are two data layers:
 | 9 | Address search in the explorer, and its cost | `gtfs_bench/explorer/geocode.py`, harness `--mode points` | done |
 | 10 | Every school line, with a switch | catalogue `scolaire` layer, `gtfs_bench/school.py`, explorer | done |
 | 11 | Feed horizon, three day types, daily refresh | `gtfs_bench/horizon.py`, `refresh.py`, `refresh.ps1` | done |
-| 12 | Engine memory, the network: 275 → 124 MB, fits 224m | raptor-kmp `perf/memory-256`, `gtfs_bench/engines.py` | in review |
-| 13 | Engine memory, search state and load peak | raptor-kmp `perf/memory-256` | planned |
+| 12 | Engine memory, the network: 275 → 124 MB, fits 224m | raptor-kmp `perf/memory-256`, `gtfs_bench/engines.py` | done |
+| 13 | Engine memory, search state, load peak, one day type at a time: 3 day types under 224m | raptor-kmp `perf/memory-256` | in review |
 | 14 | Report update | `RESULTS.md`, `RESULTS.fr.md` | planned |
 
 ## Setup
@@ -267,10 +267,20 @@ with AGP 9 and an Android SDK (`ANDROID_HOME`, default `%LOCALAPPDATA%\Android\S
   must give the very same hashes;
 - the **retained heap** and the JVM's **class histogram** of the loaded network
   (`results/engine/memory/histogram/`);
-- the **full timing run**, and the **smallest heap** (160m, 192m, 224m…) that loads the
-  network and answers 200 queries.
+- the **full timing run**, and the **smallest heap** (128m, 160m, 192m…) that loads the
+  network and answers 200 queries, the files read as an app reads them (`--load files`:
+  raptor-kmp gets providers and reads one file at a time; `--load bytes`, both files read
+  first, is how step 12 measured);
+- the **live network's day types** one after the other in one JVM (`--mode periods`: build
+  semaine, let it go, build samedi…, each answering random and address queries), under
+  256m, then smaller ceilings down to the first that fails (`results/engine_periods.csv`).
 
 Summary in `results/engine_memory.csv`; details in `results/engine/memory/`.
+
+With raptor-kmp `2.4.0-SNAPSHOT` (journeys identical to 2.2.0 everywhere): France complete
+holds 124 MB instead of 275 and fits -Xmx224m instead of 384m; France connexe fits 192m;
+the three day types of the live network run one after the other under 224m (2.2.0 cannot
+build the first under 256m). Queries are 10 to 25 % faster.
 
 ## Explorer: try the engine yourself
 

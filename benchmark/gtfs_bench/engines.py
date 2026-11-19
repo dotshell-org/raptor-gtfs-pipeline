@@ -38,7 +38,9 @@ NETWORKS = (("metropole-lyon", RAPTOR_DIR / "metropole-lyon" / "bench"),
             ("france-connexe", RAPTOR_DIR / "france-connexe" / "bench"),
             ("france-complete", RAPTOR_DIR / "france-complete" / "bench"),
             ("france-live-semaine", RAPTOR_DIR / "france-live" / "semaine"))
-HEAPS = ("160m", "192m", "224m", "256m", "320m", "384m")
+HEAPS = ("128m", "160m", "192m", "224m", "256m", "320m", "384m")
+LIVE_DIR = RAPTOR_DIR / "france-live"
+PERIOD_HEAPS = ("256m", "224m", "192m", "160m", "128m")
 #: AGP 9 refuses the Kotlin Multiplatform plugin unless told to keep the old integration;
 #: raptor-kmp's own gradle.properties (not in git) is expected to say so.
 AGP_FLAGS = ("-Pandroid.builtInKotlin=false", "-Pandroid.newDsl=false")
@@ -75,8 +77,10 @@ def _safe(version: str) -> str:
     return version.replace(".", "_")
 
 
-def golden(version: str, name: str, data: Path, java: str | None = None) -> dict:
+def golden(version: str, name: str, data: Path, java: str | None = None, reuse: bool = False) -> dict:
     out = MEMORY_DIR / "golden" / f"{name}-{_safe(version)}.json"
+    if reuse and out.exists():  # a released engine's journeys do not change
+        return json.loads(out.read_text(encoding="utf-8"))
     return run_harness(name, "2g", "golden", out=out, java=java, data_dir=data, install=ENGINES_DIR / version)
 
 
@@ -93,12 +97,15 @@ def compare_golden(a: dict, b: dict) -> dict[str, str]:
     return verdict
 
 
-def heap_floor(version: str, name: str, data: Path, java: str | None = None) -> dict[str, str]:
-    """Load plus 200 queries under each ceiling, smallest first; stops at the first that fits."""
+def heap_floor(version: str, name: str, data: Path, java: str | None = None, load: str = "files") -> dict[str, str]:
+    """Load plus 200 queries under each ceiling, smallest first; stops at the first that fits.
+
+    load="files": the harness hands raptor-kmp providers that read each file when needed, as
+    an app does (one file's bytes alive at a time); "bytes": both files read first (step 12)."""
     found = {}
     for xmx in HEAPS:
-        report = run_harness(name, xmx, "heap", out=MEMORY_DIR / "heap" / f"{name}-{_safe(version)}-{xmx}.json", java=java,
-                             data_dir=data, install=ENGINES_DIR / version)
+        report = run_harness(name, xmx, "heap", out=MEMORY_DIR / "heap" / f"{name}-{_safe(version)}-{xmx}-{load}.json",
+                             java=java, data_dir=data, install=ENGINES_DIR / version, extra=("--load", load))
         found[xmx] = report["status"] if report["status"] == "ok" else f"{report['status']} during {report.get('failedDuring')}"
         if report["status"] == "ok":
             break
@@ -113,6 +120,29 @@ def measure(version: str, name: str, data: Path, java: str | None = None) -> dic
     return report
 
 
+def periods(version: str, java: str | None = None, live: Path = LIVE_DIR, progress=print) -> list[dict]:
+    """The live network's day types one after the other in one JVM (harness --mode periods),
+    under each ceiling of PERIOD_HEAPS, largest first, down to the first that fails."""
+    rows = []
+    for xmx in PERIOD_HEAPS:
+        report = run_harness("france-live", xmx, "periods", out=MEMORY_DIR / "periods" / f"{_safe(version)}-{xmx}.json",
+                             java=java, data_dir=live, install=ENGINES_DIR / version)
+        extras = report.get("extras") or {}
+        row = {"engine": version, "xmx": xmx, "status": report["status"], "failed_during": report.get("failedDuring") or "",
+               "peak_heap_mb": round((report.get("heap") or {}).get("peakMb") or 0)}
+        for key, value in extras.items():
+            row[key.replace(".", "_")] = round(value, 1)
+        for q in report.get("querySets", []):
+            name = q["name"].replace(":", "_")
+            row[f"{name}_{q['direction']}_found"] = q["found"]
+            row[f"{name}_{q['direction']}_p95_ms"] = round(q["latencyMs"]["p95"], 2)
+        rows.append(row)
+        progress(f"  {version} day types at -Xmx{xmx}: {report['status']}" + (f" during {row['failed_during']}" if row["failed_during"] else ""))
+        if report["status"] != "ok":
+            break
+    return rows
+
+
 def _latency(report: dict, name: str, direction: str, p: str) -> float | None:
     q = next((q for q in report.get("querySets", []) if q["name"] == name and q["direction"] == direction), None)
     return round(q["latencyMs"][p], 2) if q else None
@@ -124,7 +154,7 @@ def compare(base: str, candidate: str, networks=NETWORKS, java: str | None = Non
         if not (data / "routes.bin").exists():
             progress(f"{name}: not converted, skipped")
             continue
-        g = {v: golden(v, name, data, java) for v in (base, candidate)}
+        g = {v: golden(v, name, data, java, reuse=v == base) for v in (base, candidate)}
         verdict = compare_golden(g[base], g[candidate])
         same = all(v == "same" for v in verdict.values())
         progress(f"{name}: golden journeys {'identical' if same else 'DIFFER'} {verdict if not same else ''}")
@@ -166,6 +196,7 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("compare")
     p.add_argument("base")
     p.add_argument("candidate")
+    p.add_argument("--no-periods", action="store_true", help="skip the live network's day types under small heaps")
     p.add_argument("--networks", help="comma-separated: " + ", ".join(n for n, _ in NETWORKS))
     parser.add_argument("--java-home", help="JDK for Gradle (default: $JAVA_HOME)")
     args = parser.parse_args(argv)
@@ -176,6 +207,9 @@ def main(argv: list[str] | None = None) -> int:
     else:
         wanted = set(args.networks.split(",")) if args.networks else None
         compare(args.base, args.candidate, [n for n in NETWORKS if not wanted or n[0] in wanted])
+        if not args.no_periods and (LIVE_DIR / "semaine" / "routes.bin").exists():
+            rows = periods(args.base) + periods(args.candidate)
+            _write(RESULTS_DIR / "engine_periods.csv", rows)
     return 0
 
 

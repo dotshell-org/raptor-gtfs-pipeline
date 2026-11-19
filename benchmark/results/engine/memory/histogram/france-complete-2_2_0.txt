@@ -1,19 +1,19 @@
  num     #instances         #bytes  class name (module)
 -------------------------------------------------------
-   1:       1969387      119820024  [I (java.base@21.0.7)
+   1:       1969387      119820040  [I (java.base@21.0.7)
    2:       1302522       31260528  io.raptor.model.Transfer
-   3:        471938       22204744  [Ljava.lang.Object; (java.base@21.0.7)
-   4:        481127       17145184  [B (java.base@21.0.7)
+   3:        471938       22204896  [Ljava.lang.Object; (java.base@21.0.7)
+   4:        481128       17145312  [B (java.base@21.0.7)
    5:       1020434       16326944  java.lang.Integer (java.base@21.0.7)
    6:        313419       15044112  io.raptor.model.Stop
    7:        395223       12647136  java.util.HashMap$Node (java.base@21.0.7)
    8:        496580       11917920  java.util.ArrayList (java.base@21.0.7)
-   9:        481010       11544240  java.lang.String (java.base@21.0.7)
+   9:        481011       11544264  java.lang.String (java.base@21.0.7)
   10:        183107        7324280  java.util.LinkedHashMap$Entry (java.base@21.0.7)
   11:           346        6323072  [Ljava.util.HashMap$Node; (java.base@21.0.7)
   12:             6        5336408  [[I (java.base@21.0.7)
   13:         80387        3858576  io.raptor.model.Route
-  14:           845         574688  [Ljdk.internal.vm.FillerElement; (java.base@21.0.7)
+  14:          1949         418944  [Ljdk.internal.vm.FillerElement; (java.base@21.0.7)
   15:             1         321568  [Lio.raptor.model.Route;
   16:          1862         225056  java.lang.Class (java.base@21.0.7)
   17:          1976          63232  java.util.concurrent.ConcurrentHashMap$Node (java.base@21.0.7)

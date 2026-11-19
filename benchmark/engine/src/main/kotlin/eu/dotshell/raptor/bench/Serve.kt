@@ -1,6 +1,7 @@
 package eu.dotshell.raptor.bench
 
 import io.raptor.Location
+import io.raptor.PeriodData
 import io.raptor.RaptorLibrary
 import io.raptor.WalkingParams
 import io.raptor.core.JourneyLeg
@@ -75,7 +76,9 @@ fun periodDirs(data: File): Map<String, File> {
 /** One loaded network: what every request works on. */
 private class Loaded(val name: String, dir: File) {
     val started = System.nanoTime()
-    val library = RaptorLibrary(File(dir, "stops.bin").readBytes(), File(dir, "routes.bin").readBytes())
+    // Files read when raptor-kmp builds the network: one file's bytes at a time, none kept.
+    val library = RaptorLibrary(listOf(PeriodData(name, { File(dir, "stops.bin").readBytes() },
+                                                  { File(dir, "routes.bin").readBytes() })))
     val stops = library.getStops(library.getCurrentPeriod())
     val routes = library.getRoutes(library.getCurrentPeriod())
     val loadMs = (System.nanoTime() - started) / 1e6
@@ -181,6 +184,12 @@ private class SearchStates(private val library: RaptorLibrary) {
         ready.clear()
         rounds = -1
         if (!dropping) return
+        // raptor-kmp 2.4 has a public way; earlier versions only the private fields.
+        val release = runCatching { RaptorLibrary::class.java.getMethod("releaseSearchState") }.getOrNull()
+        if (release != null) {
+            release.invoke(library)
+            return
+        }
         try {
             val cache = RaptorLibrary::class.java.getDeclaredField("algorithmCache")
                 .apply { isAccessible = true }.get(library) as Map<*, *>
