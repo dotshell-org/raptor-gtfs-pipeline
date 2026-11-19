@@ -12,7 +12,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m gtfs_bench.explorer",
                                      description="Pick two stops, get the itinerary from raptor-kmp.")
     parser.add_argument("--tier", default="france",
-                        help="france, france-connexe, region:84, metropole:lyon… (a converted tier)")
+                        help="france, france-connexe, france-complete, region:84, metropole:lyon… (a converted tier)")
     parser.add_argument("--java", help="java executable (default: $JAVA_HOME, then PATH)")
     # France loads in 384m; each extra RAPTOR round then costs ~9.4 MB of search state, so the
     # explorer's top limit (99 changes = 100 rounds) needs ~1.2 GB on France.
@@ -24,7 +24,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{data} has no routes.bin: run the notebook (or gtfs_bench.convert) for {args.tier} first.", file=sys.stderr)
         return 1
     names = {"france": "France métropolitaine", "france-connexe": "France connexe (TGV, Intercités, cars, ferries)",
-             "france-patterns": "France, une ligne par desserte"}
+             "france-patterns": "France, une ligne par desserte",
+             "france-complete": "France complète (connexe + transport scolaire)"}
     app = Explorer(data, names.get(args.tier, args.tier), args.java, args.xmx,
                    cache_dir=BENCHMARK_DIR / "data" / "tmp" / "explorer",
                    reference_day=reference_day(BENCHMARK_DIR / "results"))

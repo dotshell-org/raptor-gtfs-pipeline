@@ -162,9 +162,9 @@ class Explorer(App):
     #right { padding: 0 1; }
     .label { margin-top: 1; color: $text-muted; }
     #from_list, #to_list { height: 7; border: none; background: $boost; }
-    #when, #limits { height: 3; }
+    #when, #limits, #options { height: 3; }
     #time { width: 12; }
-    #arrive_by_label, #limits_label { padding: 1 1; }
+    #arrive_by_label, #limits_label, #school_label { padding: 1 1; }
     #fewer, #more { min-width: 5; width: 5; }
     #max_changes { width: 8; }
     #buttons { height: 3; margin-top: 1; }
@@ -231,6 +231,9 @@ class Explorer(App):
                 yield Input(value=str(DEFAULT_CHANGES), id="max_changes", type="integer", max_length=2)
                 yield Button("+", id="more")
                 yield Label("correspondances max", id="limits_label")
+            with Horizontal(id="options"):
+                yield Switch(value=True, id="school", disabled=True)
+                yield Label("lignes scolaires", id="school_label")
             with Horizontal(id="buttons"):
                 yield Button("Calculer", id="go", variant="primary", disabled=True)
                 yield Button("Surprends-moi", id="random", disabled=True)
@@ -331,6 +334,13 @@ class Explorer(App):
                           f"{thousands(info['trips'])} courses · chargé en {ms(info['loadMs'])} · {info['heapMb']:.0f} Mo{day}")
         for widget in ("#from", "#to", "#go", "#random"):
             self.query_one(widget).disabled = False
+        # School lines can be left out when the network comes with its list (gtfs_bench.school).
+        school_trips = info.get("schoolTrips", 0)
+        if info.get("schoolRoutes", 0):
+            self.query_one("#school", Switch).disabled = False
+            self.query_one("#school_label", Label).update(f"lignes scolaires · {thousands(school_trips)} courses")
+        else:
+            self.query_one("#school_label", Label).update("lignes scolaires · pas de liste pour ce réseau")
         self.status(f"Prêt en {seconds:.1f} s. Choisis un départ et une arrivée, ou Ctrl+R pour un trajet au hasard.")
         self.query_one("#from", Input).focus()
         self.set_timer(0.8, self.reveal)  # leave the finished checklist on screen a moment
@@ -444,13 +454,20 @@ class Explorer(App):
             self.status(f"Correspondances max : un nombre de 0 à {MAX_CHANGES}.")
             return
         limit = f" (≤ {changes} corresp.)" if changes != DEFAULT_CHANGES else ""
+        school = self.query_one("#school", Switch).value
+        limit += "" if school else " sans scolaires"
         self.busy = (f"Calcul {origin.name[:30]} → {destination.name[:30]}{limit}…", time.perf_counter())
         self.spin()
-        self.compute(origin, destination, when, arrive_by, changes)
+        self.compute(origin, destination, when, arrive_by, changes, school)
 
     @on(Input.Submitted, "#time, #max_changes")
     def time_entered(self) -> None:
         self.action_route()
+
+    @on(Switch.Changed, "#school")
+    def school_switched(self) -> None:
+        if self.chosen["from"] and self.chosen["to"]:
+            self.action_route()
 
     @on(Button.Pressed, "#fewer, #more")
     def step_changes(self, event: Button.Pressed) -> None:
@@ -462,11 +479,13 @@ class Explorer(App):
             self.action_route()
 
     @work(thread=True, exclusive=True, group="route")
-    def compute(self, origin: Endpoint, destination: Endpoint, when: int, arrive_by: bool, changes: int) -> None:
+    def compute(self, origin: Endpoint, destination: Endpoint, when: int, arrive_by: bool, changes: int,
+                school: bool = True) -> None:
         addresses = isinstance(origin, Address) or isinstance(destination, Address)
         try:
             result = self.server.route(engine_endpoint(origin), engine_endpoint(destination), when, arrive_by,
-                                       max_rounds=changes + 1, fallback_walk_m=FALLBACK_WALK_M if addresses else None)
+                                       max_rounds=changes + 1, fallback_walk_m=FALLBACK_WALK_M if addresses else None,
+                                       school=school)
         except Exception as error:  # the engine said no: show it, keep the app alive
             if "OutOfMemoryError" in str(error):
                 message = (f"Pas assez de mémoire pour {limit_text(changes)} : relance l'explorateur avec "
@@ -488,11 +507,13 @@ class Explorer(App):
         alternatives.clear_options()
         verb = "arrivée avant" if arrive_by else "départ à"
         limit = f" ≤{changes}" if changes != DEFAULT_CHANGES else ""
+        limit += " ¬scol" if result.school_blocked else ""
         self.history.appendleft(f"{ms(result.ms):>9}  {origin.name[:15]} → {destination.name[:15]}{limit}")
         self.query_one("#history", Static).update(Text("Derniers calculs\n", style="bold") + Text("\n".join(self.history)))
         if self.journey is None:
             summary = Text(f"Aucun itinéraire, {verb} {hhmm(when)}\n", style="bold #e34948")
-            summary.append(f"calculé en {ms(result.ms)} · {limit_text(changes)}\n", style="dim")
+            summary.append(f"calculé en {ms(result.ms)} · {limit_text(changes)}"
+                           + (" · sans les lignes scolaires" if result.school_blocked else "") + "\n", style="dim")
             if result.fallback:
                 summary.append(f"même en marchant jusqu'à {km(result.walk_radius)} depuis l'adresse", style="dim")
             else:
@@ -524,7 +545,8 @@ class Explorer(App):
         summary.append(f"calculé en {ms(result.ms)} par raptor-kmp · {count} itinéraire{'s' if count > 1 else ''} "
                        f"{'optimaux' if count > 1 else 'optimal'} (moins de changements ↔ plus tôt)\n", style="#1baf7a")
         day = f" · horaires du {day_text(self.reference_day)}" if self.reference_day else ""
-        summary.append(limit_text(self.changes_used) + day, style="dim")
+        school = " · sans les lignes scolaires" if result.school_blocked else ""
+        summary.append(limit_text(self.changes_used) + school + day, style="dim")
         if result.fallback:
             summary.append(f"\nrien d'utile à 500 m à pied : marche élargie à {km(result.walk_radius)}, comme Pelo",
                            style="#eda100")

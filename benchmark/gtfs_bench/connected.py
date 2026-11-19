@@ -12,12 +12,17 @@ only by walking transfers. Two variants are built next to it, each changing one 
 - **france-connexe**: france-patterns plus the long-distance layer of the catalogue (TGV
   INOUI, OUIGO, Intercités, Eurostar, Trenitalia, Renfe, FlixBus, BlaBlaCar Bus, ferries),
   with wider links around the stations of national networks (transfers.StationParams).
+- **france-complete** (step 10): france-connexe plus the school layer of the catalogue, the
+  feeds that carry only school transport.
 
 Each variant goes through the same chain as any tier: merge, pipeline, engine harness (at
 the engine's default 5 rounds, and at 8 for long trips), heap ceilings, plus the step's
 two checks: connected components (connectivity.audit) and Paris → every préfecture
 (connectivity.reachability). The regional France is measured again at 8 rounds and audited,
-not rebuilt. Everything lands in results/ (see RESULTS.md, "France connexe").
+not rebuilt. Every converted variant also gets its school lines (gtfs_bench.school) in
+school_routes.json next to its .bin files, checked against the engine's own route names,
+and the harness times the same trips with and without them. Everything lands in results/
+(see RESULTS.md, "France connexe"); running some variants only replaces their own rows.
 """
 
 from __future__ import annotations
@@ -32,6 +37,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from . import school as school_lines
 from .catalog import read_catalog
 from .connectivity import audit, reachability
 from .convert import DATA_DIR, MERGED_DIR, RAPTOR_DIR, RESULTS_DIR, convert_tier, write_profile
@@ -65,6 +71,8 @@ VARIANTS = (
     Variant("france", "France juxtaposée", ("regional",), False, None),
     Variant("france-patterns", "+ one route per stop sequence", ("regional",), True, None),
     Variant("france-connexe", "France connexe", ("regional", "longue_distance"), True,
+            StationParams()),
+    Variant("france-complete", "France complète", ("regional", "longue_distance", "scolaire"), True,
             StationParams()),
 )
 ENGINE_DIR = RESULTS_DIR / "engine" / "variants"
@@ -106,6 +114,45 @@ def build(variant: Variant, reference: dt.date, java: str | None = None, pipelin
     return {"merge": asdict(report), "conversion": {k: v for k, v in asdict(conversion).items() if k != "log"}}
 
 
+def tag_school(variant: Variant, reference: dt.date, rows: list[dict] | None = None, progress=print) -> dict:
+    """The variant's school lines: school_routes.json for the engine, and for the variant with
+    the school layer, the list to review (results/school_routes.csv, school_feeds.csv)."""
+    lines = school_lines.school_routes(rows if rows is not None else rows_for(variant), reference)
+    route_ids, names = school_lines.engine_route_ids(variant.zip_path, set(lines.loc[lines["rule"].notna(), "route_id"]))
+    school_lines.write_engine_file(variant.data_dir, route_ids, lines, reference)
+    if "scolaire" in variant.layers:
+        school_lines.write_review(lines, RESULTS_DIR / "school_routes.csv")
+        school_lines.summary(lines).to_csv(RESULTS_DIR / "school_feeds.csv", index=False)
+    school = lines[lines["rule"].notna()]
+    progress(f"{variant.key}: {len(school)} school lines, {int(school['trips_on_day'].sum())} of "
+             f"{int(lines['trips_on_day'].sum())} trips on {reference}, {len(route_ids)} engine routes")
+    return {"names": names, "lines": len(school), "route_ids": len(route_ids)}
+
+
+def check_school_ids(server, names: list[tuple[int, str]]) -> int:
+    """Engine routes whose name differs from the merged routes.txt row their number points at:
+    a non-zero count means the numbering assumption broke, and the switch would hide the wrong lines."""
+    engine = {route_id: name for route_id, name in server.request({"op": "routes"})["routes"]}
+    return sum(1 for route_id, name in names if route_id in engine and engine[route_id] != name)
+
+
+def time_school(variant: Variant, java: str | None = None, progress=print) -> list[dict]:
+    """The same trips with and without the school lines (harness --mode school)."""
+    report = run_harness(variant.key, "2g", "school", out=ENGINE_DIR / f"{variant.key}-school.json", java=java,
+                         data_dir=variant.data_dir)
+    extras = report.get("extras") or {}
+    rows = []
+    for q in report.get("querySets", []):
+        name, _, lines = q["name"].partition(":")
+        rows.append({"network": variant.key, "query_set": name, "lines": lines, "direction": q["direction"],
+                     "queries": q["queries"], "found": q["found"],
+                     **{f"latency_{k}_ms": round(v, 3) for k, v in q["latencyMs"].items()},
+                     "median_duration_min": q.get("medianDurationMin"),
+                     "school_route_ids": extras.get("schoolRouteIds"), "school_trips": extras.get("schoolTrips")})
+    progress(f"{variant.key} school switch: {report['status']}")
+    return rows
+
+
 def time_engine(variant: Variant, java: str | None = None, progress=print) -> dict:
     """The harness at 5 and 8 rounds, then the heap checks. Returns the reports by run."""
     ENGINE_DIR.mkdir(parents=True, exist_ok=True)
@@ -132,7 +179,8 @@ def _latency(report: dict, name: str, direction: str) -> dict:
     return q["latencyMs"] if q else {}
 
 
-def summarize(variant: Variant, built: dict | None, engine: dict, graph, reach: pd.DataFrame) -> dict:
+def summarize(variant: Variant, built: dict | None, engine: dict, graph, reach: pd.DataFrame,
+              school: dict | None = None) -> dict:
     five, eight = engine["runs"][5], engine["runs"][LONG_ROUNDS]
     network = five.get("network") or {}
     pipeline = (built or {}).get("conversion") or _pipeline_row(variant.key)
@@ -156,6 +204,7 @@ def summarize(variant: Variant, built: dict | None, engine: dict, graph, reach: 
         "islands_10_plus": graph.islands_10_plus,
         "prefectures_reached": int(reach["found"].sum()), "prefectures": len(reach),
         "prefecture_median_min": reach.loc[reach["found"], "duration_min"].median(),
+        "school_lines": (school or {}).get("lines"), "school_route_ids": (school or {}).get("route_ids"),
     }
     for rounds, report in ((5, five), (LONG_ROUNDS, eight)):
         for direction in ("forward", "arrive_by"):
@@ -185,11 +234,21 @@ def _write(path: Path, rows: list[dict]) -> None:
         writer.writerows(rows)
 
 
+def _replace(path: Path, rows: list[dict], networks: set[str]) -> None:
+    """Write `rows` in place of the earlier rows of `networks`, keeping the other networks' rows."""
+    kept = []
+    if path.exists():
+        with path.open(encoding="utf-8", newline="") as handle:
+            kept = [r for r in csv.DictReader(handle) if r.get("network") not in networks]
+    _write(path, kept + rows)
+
+
 def run(reference: dt.date, keys: list[str] | None = None, skip_build: bool = False, java: str | None = None,
         progress=print) -> pd.DataFrame:
     from .explorer.backend import EngineServer
 
-    summaries, islands, reaches, scenarios = [], [], [], []
+    summaries, islands, reaches, scenarios, switches = [], [], [], [], []
+    done: set[str] = set()
     for variant in VARIANTS:
         if keys and variant.key not in keys:
             continue
@@ -202,36 +261,72 @@ def run(reference: dt.date, keys: list[str] | None = None, skip_build: bool = Fa
         elif variant.key != "france":
             path = ENGINE_DIR / "builds" / f"{variant.key}.json"
             built = json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+        school = tag_school(variant, reference, progress=progress)
         graph, _ = audit(variant.zip_path, reference, variant.key)
         progress(f"{variant.key}: {graph.giant_weak_share:.2%} of {graph.active_stops} stops in one piece, "
                  f"{graph.islands_10_plus} islands of 10+ stops")
         engine = time_engine(variant, java, progress)
         server = EngineServer(variant.data_dir, java, "2g")
         try:
+            wrong = check_school_ids(server, school["names"])
+            if wrong:
+                raise RuntimeError(f"{variant.key}: {wrong} school route numbers point at another line in the engine")
             reach = reachability(server, variant.key, progress=progress)
         finally:
             server.close()
-        summaries.append(summarize(variant, built, engine, graph, reach))
+        switches += time_school(variant, java, progress)
+        done.add(variant.key)
+        summaries.append(summarize(variant, built, engine, graph, reach, school))
         islands += graph.islands
         reaches.append(reach)
         for rounds, report in engine["runs"].items():
             for s in report.get("scenarios", []):
                 scenarios.append({"network": variant.key, "max_rounds": rounds,
                                   **{k: (", ".join(v) if isinstance(v, list) else v) for k, v in s.items()}})
-        _write(RESULTS_DIR / "connected_france.csv", summaries)
-        _write(RESULTS_DIR / "connectivity_islands.csv", islands)
-        pd.concat(reaches).to_csv(RESULTS_DIR / "reachability_prefectures.csv", index=False)
-        _write(RESULTS_DIR / "connected_scenarios.csv", scenarios)
+        _replace(RESULTS_DIR / "connected_france.csv", summaries, done)
+        _replace(RESULTS_DIR / "connectivity_islands.csv", islands, done)
+        _replace(RESULTS_DIR / "reachability_prefectures.csv", pd.concat(reaches).to_dict("records"), done)
+        _replace(RESULTS_DIR / "connected_scenarios.csv", scenarios, done)
+        _replace(RESULTS_DIR / "school_switch.csv", switches, done)
     return pd.DataFrame(summaries)
+
+
+def school_only(reference: dt.date, keys: list[str] | None = None, java: str | None = None, progress=print) -> list[dict]:
+    """School lines of variants already converted: school_routes.json, the check against the
+    engine, and the with/without timing. Nothing else is measured again."""
+    from .explorer.backend import EngineServer
+
+    switches, done = [], set()
+    for variant in VARIANTS:
+        if (keys and variant.key not in keys) or not (variant.data_dir / "routes.bin").exists():
+            continue
+        school = tag_school(variant, reference, progress=progress)
+        server = EngineServer(variant.data_dir, java, "1g")
+        try:
+            wrong = check_school_ids(server, school["names"])
+        finally:
+            server.close()
+        if wrong:
+            raise RuntimeError(f"{variant.key}: {wrong} school route numbers point at another line in the engine")
+        switches += time_school(variant, java, progress)
+        done.add(variant.key)
+        _replace(RESULTS_DIR / "school_switch.csv", switches, done)
+    return switches
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m gtfs_bench.connected", description=__doc__.splitlines()[0])
     parser.add_argument("--variants", help="comma-separated: " + ", ".join(v.key for v in VARIANTS))
     parser.add_argument("--skip-build", action="store_true", help="reuse the merged and converted variants")
+    parser.add_argument("--school-only", action="store_true",
+                        help="only tag the school lines of converted variants and time the switch")
     parser.add_argument("--java", help="java executable (default: $JAVA_HOME, then PATH)")
     args = parser.parse_args(argv)
     reference = dt.date.fromisoformat(json.loads((RESULTS_DIR / "reference_day.json").read_text(encoding="utf-8"))["reference_date"])
+    if args.school_only:
+        rows = school_only(reference, args.variants.split(",") if args.variants else None, args.java)
+        print(pd.DataFrame(rows).to_string())
+        return 0
     table = run(reference, args.variants.split(",") if args.variants else None, args.skip_build, args.java)
     print(table.T.to_string())
     return 0

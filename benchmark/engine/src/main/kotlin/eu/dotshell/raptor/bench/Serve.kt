@@ -5,6 +5,7 @@ import io.raptor.RaptorLibrary
 import io.raptor.WalkingParams
 import io.raptor.core.JourneyLeg
 import io.raptor.core.LegType
+import io.raptor.model.Route
 import io.raptor.model.Stop
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -14,6 +15,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.double
 import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.io.File
@@ -34,6 +36,11 @@ import java.lang.management.ManagementFactory
  *      "arriveBy":false,"maxRounds":5}                     with names, times and its path
  *                                                          (maxRounds = most rides = changes + 1)
  *     {"op":"quit"}
+ *
+ *     {"op":"routes"}                                   -> every route: [id, name]
+ *
+ * School lines: when the data folder has school_routes.json (gtfs_bench.school), "school":false
+ * in a route request leaves those lines out (raptor-kmp's blockedRouteIds); the default is true.
  *
  * An endpoint is either stop ids or a point, {"lat":…,"lon":…,"label":"10 Rue …"}: a geocoded
  * address. A point goes to raptor-kmp as Location.Point with Pelo's walking model
@@ -58,6 +65,7 @@ fun main(args: Array<String>) {
     val stops = library.getStops(period)
     val routes = library.getRoutes(period)
     val loadMs = (System.nanoTime() - started) / 1e6
+    val school = schoolRoutes(data)
     repeat(2) { System.gc() }
     val heapMb = ManagementFactory.getMemoryMXBean().heapMemoryUsage.used / 1024.0 / 1024.0
 
@@ -68,6 +76,8 @@ fun main(args: Array<String>) {
         "stops" to JsonPrimitive(stops.size),
         "routes" to JsonPrimitive(routes.size),
         "trips" to JsonPrimitive(routes.sumOf { it.tripCount.toLong() }),
+        "schoolRoutes" to JsonPrimitive(school.size),
+        "schoolTrips" to JsonPrimitive(routes.filter { it.id in school }.sumOf { it.tripCount.toLong() }),
         "loadMs" to JsonPrimitive(loadMs),
         "heapMb" to JsonPrimitive(heapMb),
     )))
@@ -81,7 +91,8 @@ fun main(args: Array<String>) {
             val request = Json.parseToJsonElement(line).jsonObject
             when (request["op"]?.jsonPrimitive?.content) {
                 "stops" -> stopsAnswer(stops)
-                "route" -> routeAnswer(library, stops, states, request)
+                "routes" -> routesAnswer(routes)
+                "route" -> routeAnswer(library, stops, states, request, school)
                 "quit" -> break
                 else -> """{"type":"error","message":"unknown op"}"""
             }
@@ -143,6 +154,23 @@ private class SearchStates(private val library: RaptorLibrary) {
     }
 }
 
+/** The route ids of school lines (school_routes.json next to the .bin files), or none. */
+fun schoolRoutes(data: File): Set<Int> {
+    val file = File(data, "school_routes.json")
+    if (!file.exists()) return emptySet()
+    return Json.parseToJsonElement(file.readText()).jsonObject["routeIds"]!!.jsonArray.map { it.jsonPrimitive.int }.toHashSet()
+}
+
+private fun routesAnswer(routes: List<Route>): String {
+    val text = StringBuilder(routes.size * 24)
+    text.append("""{"type":"routes","routes":[""")
+    routes.distinctBy { it.id }.forEachIndexed { i, r ->
+        if (i > 0) text.append(',')
+        text.append('[').append(r.id).append(',').append(JsonPrimitive(r.name).toString()).append(']')
+    }
+    return text.append("]}").toString()
+}
+
 private fun stopsAnswer(stops: List<Stop>): String {
     val text = StringBuilder(stops.size * 48)
     text.append("""{"type":"stops","stops":[""")
@@ -170,20 +198,24 @@ private fun endpoint(element: JsonElement): Endpoint = when (element) {
 private fun walkedMeters(legs: List<JourneyLeg>, walking: WalkingParams): Double =
     legs.filter { it.legType != LegType.TRANSIT }.sumOf { (it.arrivalTime - it.departureTime) * walking.speedMetersPerSecond }
 
-private fun routeAnswer(library: RaptorLibrary, stops: List<Stop>, states: SearchStates, request: JsonObject): String {
+private fun routeAnswer(library: RaptorLibrary, stops: List<Stop>, states: SearchStates, request: JsonObject,
+                        school: Set<Int>): String {
     val from = endpoint(request["from"]!!)
     val to = endpoint(request["to"]!!)
     val time = request["time"]!!.jsonPrimitive.int
     val arriveBy = request["arriveBy"]?.jsonPrimitive?.boolean ?: false
     val maxRounds = request["maxRounds"]?.jsonPrimitive?.int ?: 5
     val fallbackMeters = request["fallbackWalkMeters"]?.jsonPrimitive?.double
+    val blocked = if (request["school"]?.jsonPrimitive?.boolean == false) school else emptySet()
     require(maxRounds >= 1) { "maxRounds must be at least 1" }
 
     // Two stop sets go through the location overload too: raptor-kmp hands them to the classic
     // stop-id search, so nothing changes for them.
     fun search(walking: WalkingParams) =
-        if (arriveBy) library.getOptimizedPathsArriveBy(from.location, to.location, time, maxRounds = maxRounds, walking = walking)
-        else library.getOptimizedPaths(from.location, to.location, time, maxRounds = maxRounds, walking = walking)
+        if (arriveBy) library.getOptimizedPathsArriveBy(from.location, to.location, time, maxRounds = maxRounds,
+                                                        walking = walking, blockedRouteIds = blocked)
+        else library.getOptimizedPaths(from.location, to.location, time, maxRounds = maxRounds, walking = walking,
+                                       blockedRouteIds = blocked)
 
     val walking = WalkingParams.DEFAULT
     if (states.firstAt(maxRounds, arriveBy)) search(walking)
@@ -203,6 +235,7 @@ private fun routeAnswer(library: RaptorLibrary, stops: List<Stop>, states: Searc
         .append(""","statesDropped":""").append(states.dropping)
         .append(""","walkRadius":""").append(used.maxAccessEgressDistanceMeters)
         .append(""","fallback":""").append(used !== walking)
+        .append(""","schoolBlocked":""").append(blocked.size)
         .append(""","journeys":[""")
     journeys.forEachIndexed { j, legs ->
         if (j > 0) text.append(',')

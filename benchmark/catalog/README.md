@@ -28,6 +28,23 @@ python -m gtfs_bench.catalog check        # gtfs_france.csv against the PAN toda
 `layer=regional` by default, and only the `france-connexe` variant
 (`gtfs_bench/connected.py`) reads both layers.
 
+**Step 10, 19 November 2026: school transport.** The 18 rows refused as school-only, or as a
+network's school resource, were checked against the PAN (all valid, none on-demand only)
+and switched to `include=true` in a third layer, `layer=scolaire`, read only by the
+`france-complete` variant. They come last in duplicate removal (`priority=90`), so a trip
+also carried by a regular feed keeps the regular copy. Two of them also carry regular lines
+taken elsewhere, so `keep_routes` keeps only their school lines:
+
+- `start` (Thonon): the STAR'T lines come from the Oùra aggregate; kept: the S… and s…
+  services.
+- `ametis-tad-scolaire` (Amiens): kept: the T33–T49 school lines. The regular lines and the
+  on-demand ones are dropped; the regular network is resource 80705.
+
+Which lines are school lines, in these feeds and in the mixed ones (TBM, Sankéo, the Nord and
+Oise coaches, the regional aggregates…), is decided by `gtfs_bench.school` and listed in
+`results/school_routes.csv`. A feed with its own naming convention gets it in `school`:
+Rennes STAR, `^Ts\d`. The list is checked in RESULTS.md.
+
 What each row adds on the reference day (Tuesday 24 November 2026), once normalization has
 dropped the stops outside mainland France and the trips left with fewer than two stops:
 
@@ -74,7 +91,7 @@ The row counts come from the PAN's `metadata.stats`. Those count trips over a fe
 |---|---|
 | `feed_id` | Unique slug. Every GTFS id of the feed is prefixed with it when merging, so keep it stable once data has been built |
 | `include` | `true` / `false` |
-| `layer` | `regional` (steps 1–7) or `longue_distance` (step 8) |
+| `layer` | `regional` (steps 1–7), `longue_distance` (step 8) or `scolaire` (step 10, school-only feeds) |
 | `region_code`, `region_name` | INSEE region, or `FR` for a national feed |
 | `metropole` | One of the 22 keys in `gtfs_bench.catalog.METROPOLES`, or empty. A feed with a métropole belongs to that métropole's tier |
 | `level` | `urbain`, `interurbain`, `agregat_regional`, `ferroviaire` or `national` |
@@ -83,8 +100,10 @@ The row counts come from the PAN's `metadata.stats`. Those count trips over a fe
 | `auth` | Credentials key (see `../.env.example`), empty if public |
 | `keep_agencies` / `drop_agencies` | Regex on `agency_name`. Takes a network out of a feed that carries it when it comes from somewhere else |
 | `keep_stop_ids` / `drop_stop_ids` | Regex on `stop_id`. Keeps only the trips whose every stop matches, or drops the trips with any stop that matches |
+| `keep_routes` | Regex on `route_short_name`: keep only these lines, the rest being taken from another feed |
 | `clip` | `true`: a tier keeps only the part of the feed inside its own area. Used for national and cross-border feeds |
-| `priority` | When the same trip comes from two feeds, the lower value wins. Defaults: urban 10, rail and national 15, interurban 20, aggregate 30 |
+| `priority` | When the same trip comes from two feeds, the lower value wins. Defaults: urban 10, rail and national 15, interurban 20, aggregate 30, school-only 90 |
+| `school` | `all`: every line of the feed is a school line. Otherwise a regex on `route_short_name` naming the feed's school lines, on top of the general rules of `gtfs_bench.school` |
 | `pan_dataset_id`, `pan_resource_id` | Where the row comes from on the PAN; empty for other sources |
 | `licence`, `stats_trips`, `stats_stops`, `valid_from`, `valid_to` | Copied from the PAN when the row was written, for reference |
 | `notes` | Why the row is what it is |
@@ -107,7 +126,7 @@ The regexes are RE2 (DuckDB) and Python compatible. Only metacharacters are esca
 
 **Refused outright:**
 
-- school-only feeds;
+- school-only feeds (until step 10, which puts them in the `scolaire` layer);
 - on-demand (TAD) and zonal on-demand services;
 - feeds with no trips;
 - carpooling lines;

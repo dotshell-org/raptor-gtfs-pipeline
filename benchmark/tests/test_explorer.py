@@ -46,13 +46,13 @@ class FakeServer:
     def stops(self):
         return STOPS
 
-    def route(self, origins, destinations, time, arrive_by=False, max_rounds=5, fallback_walk_m=None):
+    def route(self, origins, destinations, time, arrive_by=False, max_rounds=5, fallback_walk_m=None, school=True):
         def plain(end):  # stop ids sorted, an address as sent
             return end if isinstance(end, dict) else sorted(end)
-        self.calls.append((plain(origins), plain(destinations), time, arrive_by, max_rounds, fallback_walk_m))
+        self.calls.append((plain(origins), plain(destinations), time, arrive_by, max_rounds, fallback_walk_m, school))
         if max_rounds > 50:
             raise EngineError("OutOfMemoryError: no room for that many rounds in a 1024 MB heap")
-        return RouteResult(1.25, [journey()], max_rounds)
+        return RouteResult(1.25, [journey()], max_rounds, school_blocked=0 if school else 5)
 
     def close(self):
         pass
@@ -284,7 +284,7 @@ def test_app_routes_from_an_address():
             assert app.chosen["from"] == REPUBLIQUE
             await pilot.press(*"part dieu", "enter")
             await pilot.pause(0.3)
-            origin, destination, time, arrive_by, rounds, fallback = server.calls[-1]
+            origin, destination, time, arrive_by, rounds, fallback, school = server.calls[-1]
             assert origin == REPUBLIQUE.endpoint() and destination == [3] and fallback == 6000.0
             # Typing the other end leans the search towards the address already chosen.
             box = app.query_one("#to")
@@ -295,6 +295,41 @@ def test_app_routes_from_an_address():
             assert geocoder.asked[-1] == ("rue", (REPUBLIQUE.lat, REPUBLIQUE.lon))
             # A stop still goes to the engine as its ids.
             assert engine_endpoint(app.index.search("bellec")[0]) == [1, 2]
+    asyncio.run(scenario())
+
+
+def test_app_school_switch_reaches_the_engine():
+    class SchoolServer(FakeServer):
+        info = {**FakeServer.info, "schoolRoutes": 5, "schoolTrips": 1234}
+
+    async def scenario():
+        server = SchoolServer()
+        app = make_app(server)
+        async with app.run_test(size=(150, 45)) as pilot:
+            await wait_ready(app, pilot)
+            switch = app.query_one("#school")
+            assert not switch.disabled and switch.value
+            assert "1 234 courses" in str(app.query_one("#school_label").render())
+            await pilot.click("#from")
+            await pilot.press(*"bellec", "enter")
+            await pilot.press(*"part dieu", "enter")
+            await pilot.pause(0.3)
+            assert server.calls[-1][6] is True                     # school lines in by default
+            await pilot.click("#school")                           # off: searched again without them
+            await pilot.pause(0.3)
+            assert server.calls[-1][6] is False and server.calls[-1][:2] == ([1, 2], [3])
+            assert "sans les lignes scolaires" in str(app.query_one("#summary").render())
+            assert "¬scol" in str(app.query_one("#history").render())
+    asyncio.run(scenario())
+
+
+def test_school_switch_is_off_limits_without_a_list():
+    async def scenario():
+        app = make_app(FakeServer())
+        async with app.run_test(size=(150, 45)) as pilot:
+            await wait_ready(app, pilot)
+            assert app.query_one("#school").disabled
+            assert "pas de liste" in str(app.query_one("#school_label").render())
     asyncio.run(scenario())
 
 

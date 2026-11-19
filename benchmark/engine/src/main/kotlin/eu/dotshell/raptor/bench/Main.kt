@@ -16,13 +16,14 @@ import kotlin.system.exitProcess
  * Loads one tier's stops.bin / routes.bin into raptor-kmp and measures it.
  *
  *     benchmark-engine --data data/raptor/france/bench --tier france --out france.json
- *         [--mode full|heap|points] [--queries 1000] [--warmup 200] [--loads 5] [--seed 12345]
+ *         [--mode full|heap|points|school] [--queries 1000] [--warmup 200] [--loads 5] [--seed 12345]
  *         [--areas areas.csv] [--scenarios scenarios.csv] [--max-rounds 5]
  *
  * full: cold and warm load times, retained heap, latency of random, local and named
  * queries, forward and arrive-by. heap: load and a short run of queries only, to learn
  * whether the tier fits under the -Xmx it was started with. points: what searching from an
- * address costs, against searching from stops, on the same trips (see [pointSets]). An
+ * address costs, against searching from stops, on the same trips (see [pointSets]). school:
+ * the same trips with and without the school lines (see [schoolSets]). An
  * OutOfMemoryError is caught and reported with the phase it struck in, so the driver can tell
  * "does not fit" from "broken".
  */
@@ -147,6 +148,9 @@ private fun run(options: Options): Report {
     if (options.mode == "points") {
         phase = "points"
         querySets += pointSets(library, stops, index, options, extras)
+    } else if (options.mode == "school") {
+        phase = "school"
+        querySets += schoolSets(library, ids, index, options, extras)
     } else if (options.mode == "full") {
         val random = randomQueries(ids, options.queries, options.seed)
         querySets += timeSet("random", "forward", random) { forward(library, it, options.maxRounds) }
@@ -180,6 +184,38 @@ private fun run(options: Options): Report {
         scenarios = scenarios,
         extras = extras,
     )
+}
+
+/**
+ * The "school lines" switch: the same trips with every line, then with the school lines left
+ * out (school_routes.json, raptor-kmp's blockedRouteIds). Random and local sets, forward and
+ * arrive-by. The found counts tell how many trips need a school line; the latencies, what the
+ * filter costs (raptor-kmp checks every route against the set once per search).
+ */
+private fun schoolSets(library: RaptorLibrary, ids: List<Int>, index: StopIndex, options: Options,
+                       extras: MutableMap<String, Double>): List<QuerySet> {
+    val blocked = schoolRoutes(options.data)
+    require(blocked.isNotEmpty()) { "no school_routes.json in ${options.data}" }
+    extras["schoolRouteIds"] = blocked.size.toDouble()
+    val period = library.getCurrentPeriod()
+    extras["schoolTrips"] = library.getRoutes(period).filter { it.id in blocked }.sumOf { it.tripCount }.toDouble()
+    val rounds = options.maxRounds
+    fun run(q: Query, backward: Boolean, without: Set<Int>) =
+        if (backward) library.getOptimizedPathsArriveBy(q.origins, q.destinations, q.time, maxRounds = rounds, blockedRouteIds = without)
+        else library.getOptimizedPaths(q.origins, q.destinations, q.time, maxRounds = rounds, blockedRouteIds = without)
+
+    val sets = mutableListOf("random" to randomQueries(ids, options.queries, options.seed))
+    options.areas?.let(::readAreas)?.forEach { area -> localQueries(area, index, options.seed)?.let { sets += area.name to it } }
+    val results = mutableListOf<QuerySet>()
+    for ((name, queries) in sets) {
+        for (backward in listOf(false, true)) {
+            val direction = if (backward) "arrive_by" else "forward"
+            val timed = if (backward) queries.map { it.copy(time = it.time + 3600) } else queries
+            results += timeSet("$name:all", direction, timed) { run(it, backward, emptySet()) }
+            results += timeSet("$name:no-school", direction, timed) { run(it, backward, blocked) }
+        }
+    }
+    return results
 }
 
 /**

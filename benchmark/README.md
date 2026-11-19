@@ -43,8 +43,8 @@ There are two data layers:
 | 6 | Engine harness (`:benchmark-engine`) | `engine/` + `gtfs_bench/engine.py` | done |
 | 7 | Report | [`RESULTS.md`](RESULTS.md) | done |
 | 8 | Long-distance layer, connected France | catalogue + `gtfs_bench/connected.py`, `connectivity.py` | done |
-| 9 | Address search in the explorer, and its cost | `gtfs_bench/explorer/geocode.py`, harness `--mode points` | in review |
-| 10 | Every school line, with a switch | catalogue, `normalize.py`, explorer | planned |
+| 9 | Address search in the explorer, and its cost | `gtfs_bench/explorer/geocode.py`, harness `--mode points` | done |
+| 10 | Every school line, with a switch | catalogue `scolaire` layer, `gtfs_bench/school.py`, explorer | in review |
 | 11 | Feed horizon, three day types, daily refresh | `gtfs_bench/horizon.py`, `refresh.py` | planned |
 | 12–13 | Engine memory down to a 256 MB heap | raptor-kmp branch `perf/memory-256` | planned |
 | 14 | Report update | `RESULTS.md`, `RESULTS.fr.md` | planned |
@@ -171,8 +171,18 @@ Two variants of the France tier, each changing one thing, merged into
 - **`france-connexe`:** the same, plus the catalogue's `longue_distance` rows and wider
   links around the stations of national networks (`MergeParams.stations`: 500 m and 60
   neighbours from a station's stops, and every pair of SNCF stops sharing a UIC code).
+- **`france-complete`** (step 10): france-connexe plus the `scolaire` rows, the 18 feeds
+  that carry only school transport (`--variants france-complete`).
 
 Each one, and the regional France as it is, then gets:
+
+- its **school lines** (`gtfs_bench/school.py`): which lines are school lines, by the
+  catalogue (`school` column), the GTFS school route types 712/713, the name, or a line
+  serving a school with at most 6 runs that day. They go to `school_routes.json` next to the
+  `.bin` files, as the route numbers raptor-kmp knows them, checked against the engine's own
+  names; the full list for review is `results/school_routes.csv` (per feed:
+  `results/school_feeds.csv`). The harness then times the same trips with and without them
+  (`--mode school`, `results/school_switch.csv`);
 
 - the engine harness at 5 rounds (the default) and at 8, and heap checks at 384m, 512m
   and 1g;
@@ -212,6 +222,10 @@ runs in a JVM with France loaded once, and you pick two stops or addresses anywh
   Each extra round costs about 9.4 MB of search state on France, which is why the explorer
   starts the engine with `-Xmx2g`. Below that, a very high limit answers "pas assez de
   mémoire" and the engine keeps running.
+- **School lines:** the "lignes scolaires" switch leaves every school line out of the
+  search (raptor-kmp's `blockedRouteIds`) and searches again. It works on any network
+  converted with its `school_routes.json` (`gtfs_bench.connected` writes one per variant);
+  `--tier france-complete` also has the school-only networks.
 - **Result:** the itinerary, leg by leg, with lines, stops and walks, and the alternatives
   raptor-kmp returns (fewer changes against earlier arrival). The time shown is the
   raptor-kmp call alone, measured inside the JVM.

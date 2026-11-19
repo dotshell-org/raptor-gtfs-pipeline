@@ -53,7 +53,7 @@ CANDIDATE_COLUMNS = [
 CATALOG_COLUMNS = [
     "feed_id",          # unique slug, also the prefix every GTFS id of the feed gets
     "include",          # true / false
-    "layer",            # regional | longue_distance
+    "layer",            # regional | longue_distance | scolaire
     "region_code",      # INSEE region code, or FR for a national feed
     "region_name",
     "metropole",        # one of METROPOLES, or empty
@@ -66,8 +66,10 @@ CATALOG_COLUMNS = [
     "drop_agencies",    # regex on agency_name: drop these (taken from another feed)
     "keep_stop_ids",    # regex on stop_id: keep only trips whose every stop matches
     "drop_stop_ids",    # regex on stop_id: drop trips with any stop matching
+    "keep_routes",      # regex on route_short_name: keep only these lines (the rest is taken elsewhere)
     "clip",             # true: keep only the part inside the tier's area
     "priority",         # lower wins when the same trip comes from two feeds
+    "school",           # all: every line is a school line; else a regex on route_short_name naming them
     "pan_dataset_id", "pan_resource_id",
     "licence", "stats_trips", "stats_stops", "valid_from", "valid_to",
     "notes",
