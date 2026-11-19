@@ -31,18 +31,21 @@
 # February, spring and any other school-year break belong here as further windows, one week each,
 # the day a longer export carries them.
 #
-# Windows read off this export by counting trips per weekday:
+# Windows read off the export of 18 November 2026 (calendar to 18 March 2027) by counting trips
+# per day:
 #
-#   17–28 Aug 2026   16 164–19 287   summer break, before the 31 Aug rentrée
-#   31 Aug–16 Oct    20 904–22 694   term
-#   19–30 Oct        19 145–19 472   Toussaint break, two weeks
-#    2 Nov–18 Dec    22 334–22 724   term
-#   from 21 Dec       6 184 and less  the export stops carrying a full timetable
+#   17 Nov–18 Dec    21 566–22 665, ~775 lines   term
+#   Saturdays        14 140–14 888              Sundays 8 865–9 964
+#   21–24 Dec        18 892–18 936, ~190 lines   Christmas break, first week
+#   25 Dec, 1 Jan     8 896–9 223               public holidays: Sunday-like, left out
+#   28–31 Dec        17 101–17 132              between Christmas and New Year, lighter
+#    4 Jan–12 Feb    22 472–22 734, ~655 lines   term
+#   from 16 Feb         965 and less            the export stops carrying a full timetable
 #
-# So this export covers two breaks: the tail of summer and Toussaint. Christmas onwards is the feed
-# running out, not a holiday timetable, and is left out on purpose. Add the February, spring and
-# summer breaks here when an export reaches them — the build reports any rule matching no service,
-# which is where a window outside the feed shows up.
+# Every window must lie inside the export the server converts: the previous ones, in October and
+# early November, matched next to nothing in the export of 15 November, and the server published
+# periods of a few hundred trips. Move them with each export; the server now refuses a dataset whose
+# periods collapse, but it cannot pick new dates itself.
 #
 # If phantom trips matter more than coverage, the alternative is one period per break
 # (school_off_toussaint, school_off_fevrier, …): the pipeline names periods freely, it is the
@@ -62,23 +65,23 @@ periods:
     rules:
       - days: [sat]
         dateRanges:
-          - { from: 2026-11-07, to: 2026-11-07 }
+          - { from: 2026-11-28, to: 2026-11-28 }
   sunday:
     description: Sunday service
     rules:
       - days: [sun]
         dateRanges:
-          - { from: 2026-11-08, to: 2026-11-08 }
+          - { from: 2026-11-29, to: 2026-11-29 }
   school_on_weekdays:
     description: Weekdays during school term
     rules:
       - days: [mon-fri]
         dateRanges:
-          - { from: 2026-11-02, to: 2026-11-06 }   # one term week: every weekday, deduplicated
+          - { from: 2026-11-23, to: 2026-11-27 }   # one term week: every weekday, deduplicated
   school_off_weekdays:
     description: Weekdays during school holidays
     rules:
       - days: [mon-fri]
         dateRanges:
-          - { from: 2026-10-26, to: 2026-10-30 }   # Toussaint; add February, spring, … alongside
+          - { from: 2026-12-21, to: 2026-12-24 }   # Christmas, before the 25th; add February, spring, … alongside
 unmatched: warn
