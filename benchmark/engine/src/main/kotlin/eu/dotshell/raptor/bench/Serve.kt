@@ -1,14 +1,19 @@
 package eu.dotshell.raptor.bench
 
+import io.raptor.Location
 import io.raptor.RaptorLibrary
+import io.raptor.WalkingParams
 import io.raptor.core.JourneyLeg
+import io.raptor.core.LegType
 import io.raptor.model.Stop
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.double
 import kotlinx.serialization.json.int
-import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.io.File
@@ -29,6 +34,12 @@ import java.lang.management.ManagementFactory
  *      "arriveBy":false,"maxRounds":5}                     with names, times and its path
  *                                                          (maxRounds = most rides = changes + 1)
  *     {"op":"quit"}
+ *
+ * An endpoint is either stop ids or a point, {"lat":…,"lon":…,"label":"10 Rue …"}: a geocoded
+ * address. A point goes to raptor-kmp as Location.Point with Pelo's walking model
+ * (WalkingParams.DEFAULT: every stop within 500 m, 4.8 km/h × 1.3 detour, walk-only journey
+ * under 1 km). With "fallbackWalkMeters":6000, a point search that finds nothing is run again
+ * walking up to that far, keeping journeys that walk no more than that in total: what Pelo does.
  *
  * "ms" in a route answer times the raptor-kmp call alone, not the pipe around it. The first
  * search of each kind (forward, arrive-by) after the round limit changes runs once untimed
@@ -143,48 +154,88 @@ private fun stopsAnswer(stops: List<Stop>): String {
     return text.append("]}").toString()
 }
 
+/** A route endpoint: stop ids, or a point (an address) and the name to show for it. */
+private class Endpoint(val location: Location, val label: String?)
+
+private fun endpoint(element: JsonElement): Endpoint = when (element) {
+    is JsonArray -> Endpoint(Location.StopIds(element.map { it.jsonPrimitive.int }), null)
+    is JsonObject -> Endpoint(
+        Location.Point(element["lat"]!!.jsonPrimitive.double, element["lon"]!!.jsonPrimitive.double),
+        element["label"]?.jsonPrimitive?.content,
+    )
+    else -> error("an endpoint is [stop ids] or {\"lat\":…,\"lon\":…,\"label\":…}")
+}
+
+/** Metres walked in a journey, as Pelo counts them: walking seconds at walking speed. */
+private fun walkedMeters(legs: List<JourneyLeg>, walking: WalkingParams): Double =
+    legs.filter { it.legType != LegType.TRANSIT }.sumOf { (it.arrivalTime - it.departureTime) * walking.speedMetersPerSecond }
+
 private fun routeAnswer(library: RaptorLibrary, stops: List<Stop>, states: SearchStates, request: JsonObject): String {
-    val from = request["from"]!!.jsonArray.map { it.jsonPrimitive.int }
-    val to = request["to"]!!.jsonArray.map { it.jsonPrimitive.int }
+    val from = endpoint(request["from"]!!)
+    val to = endpoint(request["to"]!!)
     val time = request["time"]!!.jsonPrimitive.int
     val arriveBy = request["arriveBy"]?.jsonPrimitive?.boolean ?: false
     val maxRounds = request["maxRounds"]?.jsonPrimitive?.int ?: 5
+    val fallbackMeters = request["fallbackWalkMeters"]?.jsonPrimitive?.double
     require(maxRounds >= 1) { "maxRounds must be at least 1" }
 
-    fun search() = if (arriveBy) library.getOptimizedPathsArriveBy(from, to, time, maxRounds = maxRounds)
-                   else library.getOptimizedPaths(from, to, time, maxRounds = maxRounds)
+    // Two stop sets go through the location overload too: raptor-kmp hands them to the classic
+    // stop-id search, so nothing changes for them.
+    fun search(walking: WalkingParams) =
+        if (arriveBy) library.getOptimizedPathsArriveBy(from.location, to.location, time, maxRounds = maxRounds, walking = walking)
+        else library.getOptimizedPaths(from.location, to.location, time, maxRounds = maxRounds, walking = walking)
 
-    if (states.firstAt(maxRounds, arriveBy)) search()
+    val walking = WalkingParams.DEFAULT
+    if (states.firstAt(maxRounds, arriveBy)) search(walking)
     val started = System.nanoTime()
-    val journeys = search()
+    var journeys = search(walking).filter { it.isNotEmpty() }
+    var used = walking
+    val points = from.location is Location.Point || to.location is Location.Point
+    if (journeys.isEmpty() && points && fallbackMeters != null && fallbackMeters > walking.maxAccessEgressDistanceMeters) {
+        used = WalkingParams(maxAccessEgressDistanceMeters = fallbackMeters, maxDirectWalkDistanceMeters = fallbackMeters)
+        journeys = search(used).filter { it.isNotEmpty() && walkedMeters(it, used) <= fallbackMeters }
+    }
     val ms = (System.nanoTime() - started) / 1e6
 
     val text = StringBuilder()
     text.append("""{"type":"route","ms":""").append(ms)
         .append(""","maxRounds":""").append(maxRounds)
         .append(""","statesDropped":""").append(states.dropping)
+        .append(""","walkRadius":""").append(used.maxAccessEgressDistanceMeters)
+        .append(""","fallback":""").append(used !== walking)
         .append(""","journeys":[""")
-    journeys.filter { it.isNotEmpty() }.forEachIndexed { j, legs ->
+    journeys.forEachIndexed { j, legs ->
         if (j > 0) text.append(',')
         text.append('[')
-        legs.forEachIndexed { i, leg -> if (i > 0) text.append(','); appendLeg(text, leg, stops) }
+        legs.forEachIndexed { i, leg -> if (i > 0) text.append(','); appendLeg(text, leg, stops, from.label, to.label) }
         text.append(']')
     }
     return text.append("]}").toString()
 }
 
-private fun appendLeg(text: StringBuilder, leg: JourneyLeg, stops: List<Stop>) {
+/**
+ * One leg as JSON. Stop index -1 is a point endpoint (an address): its name is the label the
+ * request gave, its position the coordinates raptor-kmp puts on walk legs.
+ */
+private fun appendLeg(text: StringBuilder, leg: JourneyLeg, stops: List<Stop>, fromLabel: String?, toLabel: String?) {
     fun stop(i: Int) = stops.getOrNull(i)
+    fun name(i: Int, label: String?) = if (i == -1) label ?: "Adresse" else stop(i)?.name ?: "?"
     fun point(i: Int) = stop(i)?.let { "[${it.lat},${it.lon}]" }
-    val path = (listOf(leg.fromStopIndex) + leg.intermediateStopIndices + listOf(leg.toStopIndex)).mapNotNull(::point)
+    fun coordinate(lat: Double?, lon: Double?) = if (lat != null && lon != null) "[$lat,$lon]" else null
+    val path = buildList {
+        add(if (leg.fromStopIndex == -1) coordinate(leg.fromLat, leg.fromLon) else point(leg.fromStopIndex))
+        leg.intermediateStopIndices.forEach { add(point(it)) }
+        add(if (leg.toStopIndex == -1) coordinate(leg.toLat, leg.toLon) else point(leg.toStopIndex))
+    }.filterNotNull()
     text.append('{')
-        .append("\"from\":").append(JsonPrimitive(stop(leg.fromStopIndex)?.name ?: "?").toString())
-        .append(",\"to\":").append(JsonPrimitive(stop(leg.toStopIndex)?.name ?: "?").toString())
+        .append("\"from\":").append(JsonPrimitive(name(leg.fromStopIndex, fromLabel)).toString())
+        .append(",\"to\":").append(JsonPrimitive(name(leg.toStopIndex, toLabel)).toString())
         .append(",\"dep\":").append(leg.departureTime)
         .append(",\"arr\":").append(leg.arrivalTime)
         .append(",\"route\":").append(leg.routeName?.let { JsonPrimitive(it).toString() } ?: "null")
         .append(",\"direction\":").append(leg.direction?.let { JsonPrimitive(it).toString() } ?: "null")
         .append(",\"walk\":").append(leg.isTransfer)
+        .append(",\"kind\":\"").append(leg.legType.name.lowercase()).append('"')
         .append(",\"stops\":").append(leg.intermediateStopIndices.size)
         .append(",\"path\":[").append(path.joinToString(",")).append("]}")
 }

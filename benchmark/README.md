@@ -42,7 +42,12 @@ There are two data layers:
 | 5 | Pipeline conversion, measured | `gtfs_bench/convert.py` | done |
 | 6 | Engine harness (`:benchmark-engine`) | `engine/` + `gtfs_bench/engine.py` | done |
 | 7 | Report | [`RESULTS.md`](RESULTS.md) | done |
-| 8 | Long-distance layer, connected France | catalogue + `gtfs_bench/connected.py`, `connectivity.py` | in review |
+| 8 | Long-distance layer, connected France | catalogue + `gtfs_bench/connected.py`, `connectivity.py` | done |
+| 9 | Address search in the explorer, and its cost | `gtfs_bench/explorer/geocode.py`, harness `--mode points` | in review |
+| 10 | Every school line, with a switch | catalogue, `normalize.py`, explorer | planned |
+| 11 | Feed horizon, three day types, daily refresh | `gtfs_bench/horizon.py`, `refresh.py` | planned |
+| 12–13 | Engine memory down to a 256 MB heap | raptor-kmp branch `perf/memory-256` | planned |
+| 14 | Report update | `RESULTS.md`, `RESULTS.fr.md` | planned |
 
 ## Setup
 
@@ -182,11 +187,21 @@ The explorer opens any of them: `python -m gtfs_bench.explorer --tier france-con
 ## Explorer: try the engine yourself
 
 `python -m gtfs_bench.explorer` opens a terminal app on top of the real engine. raptor-kmp
-runs in a JVM with France loaded once, and you pick two stops anywhere in it:
+runs in a JVM with France loaded once, and you pick two stops or addresses anywhere in it:
 
 - **Search:** type a few letters of a stop. Case and accents do not matter, and the commune
   counts too ("lyon gambetta"). A place is every stop sharing a name. Enter or a click
   picks it.
+- **Addresses:** below the stops, an "Adresses · Photon" section lists addresses and named
+  places ("20 rue de la Paix Paris", "Tour Eiffel"), found as Pelo finds them: the public
+  [Photon](https://photon.komoot.io) geocoder, from 3 characters, once typing pauses, 6
+  results, mainland France only, leaning towards the other end once it is chosen. The typed
+  text goes to photon.komoot.io; answers are cached in `data/tmp/explorer/geocode.json`, and
+  offline the section just stays empty. The engine gets the point itself
+  (`Location.Point`, raptor-kmp's own address search) and walks to every stop within 500 m,
+  at 4.8 km/h with a 1.3 detour factor, or the whole way when under 1 km. When that finds
+  nothing, it searches again walking up to 6 km, as Pelo does, and says so. What it costs:
+  `python -m gtfs_bench.engine --addresses` (results/address_queries.csv).
 - **Time:** a departure time, or "arriver avant" for arrive-by. The day is the
   benchmark's reference day (Tuesday 24 November 2026): the tiers are converted for that
   day only. Times past 24:00 reach that day's late-night trips (25:30 = 01:30 the next

@@ -35,6 +35,10 @@ class StopIndex(private val stops: List<Stop>) {
 
     private fun key(lat: Double, lon: Double): Long = (cellOf(lat) shl 32) xor (cellOf(lon) and 0xffffffffL)
 
+    /** The closest stop within [radius] metres, or null. */
+    fun nearest(lat: Double, lon: Double, radius: Double = 2_000.0): Stop? =
+        within(lat, lon, radius).minByOrNull { distanceMeters(lat, lon, it.lat, it.lon) }
+
     fun within(lat: Double, lon: Double, radius: Double): List<Stop> {
         val reach = (radius / 1_000.0 / (cell * 111.0)).toInt() + 1
         val baseLat = cellOf(lat)
@@ -60,6 +64,55 @@ fun randomQueries(stopIds: List<Int>, count: Int, seed: Long): List<Query> {
         if (d == o) d = (d + 1) % stopIds.size
         Query(listOf(stopIds[o]), listOf(stopIds[d]), (6 + rng.nextInt(16)) * 3600 + rng.nextInt(60) * 60)
     }
+}
+
+/** A trip between two points (addresses) rather than stops, and a time. */
+data class PointQuery(val oLat: Double, val oLon: Double, val dLat: Double, val dLon: Double, val time: Int)
+
+/** A point at most [meters] from (lat, lon), uniform over the disc. */
+private fun jittered(rng: Random, lat: Double, lon: Double, meters: Double): Pair<Double, Double> {
+    val r = meters * sqrt(rng.nextDouble())
+    val angle = rng.nextDouble() * 2 * Math.PI
+    val dLat = r * cos(angle) / 111_320.0
+    val dLon = r * sin(angle) / (111_320.0 * cos(Math.toRadians(lat)))
+    return Pair(lat + dLat, lon + dLon)
+}
+
+/**
+ * [randomQueries]' pairs turned into addresses: each stop moved up to [jitter] metres in a
+ * random direction, as an address near a stop is. Same stops and times as the random set.
+ */
+fun randomPoints(stops: List<Stop>, count: Int, seed: Long, jitter: Double = 300.0): List<PointQuery> {
+    val byId = stops.associateBy { it.id }
+    val rng = Random(seed xor 0x5EEDL)
+    return randomQueries(stops.map { it.id }, count, seed).map { q ->
+        val o = byId.getValue(q.origins.single())
+        val d = byId.getValue(q.destinations.single())
+        val (oLat, oLon) = jittered(rng, o.lat, o.lon, jitter)
+        val (dLat, dLon) = jittered(rng, d.lat, d.lon, jitter)
+        PointQuery(oLat, oLon, dLat, dLon, q.time)
+    }
+}
+
+/** The very points [localQueries] draws (same seed, same draws), kept as points. */
+fun localPoints(area: Area, index: StopIndex, seed: Long, radius: Double = 400.0): List<PointQuery>? {
+    val rng = Random(seed xor area.name.hashCode().toLong())
+    val points = ArrayList<PointQuery>()
+    var misses = 0
+    fun point() = Pair(area.latMin + rng.nextDouble() * (area.latMax - area.latMin), area.lonMin + rng.nextDouble() * (area.lonMax - area.lonMin))
+    while (points.size < area.pairs) {
+        val (oLat, oLon) = point()
+        val (dLat, dLon) = point()
+        val time = (6 + rng.nextInt(16)) * 3600 + rng.nextInt(60) * 60
+        val km = distanceMeters(oLat, oLon, dLat, dLon) / 1_000.0
+        if (km < area.minKm || km > area.maxKm) continue
+        if (index.within(oLat, oLon, radius).isEmpty() || index.within(dLat, dLon, radius).isEmpty()) {
+            if (++misses > area.pairs * 20) return null
+            continue
+        }
+        points.add(PointQuery(oLat, oLon, dLat, dLon, time))
+    }
+    return points
 }
 
 /** A city's box, where the same seeded trips are drawn for every tier that covers it. */

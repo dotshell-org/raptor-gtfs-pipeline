@@ -18,6 +18,8 @@ data class Report(
     val heap: Heap? = null,
     val querySets: List<QuerySet> = emptyList(),
     val scenarios: List<Scenario> = emptyList(),
+    /** Single figures a mode adds, e.g. points mode: the heap the address search adds. */
+    val extras: Map<String, Double> = emptyMap(),
 )
 
 @Serializable

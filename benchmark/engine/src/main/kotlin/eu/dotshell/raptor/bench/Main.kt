@@ -1,7 +1,10 @@
 package eu.dotshell.raptor.bench
 
+import io.raptor.Location
 import io.raptor.RaptorLibrary
+import io.raptor.WalkingParams
 import io.raptor.core.JourneyLeg
+import io.raptor.model.Stop
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
@@ -13,13 +16,15 @@ import kotlin.system.exitProcess
  * Loads one tier's stops.bin / routes.bin into raptor-kmp and measures it.
  *
  *     benchmark-engine --data data/raptor/france/bench --tier france --out france.json
- *         [--mode full|heap] [--queries 1000] [--warmup 200] [--loads 5] [--seed 12345]
+ *         [--mode full|heap|points] [--queries 1000] [--warmup 200] [--loads 5] [--seed 12345]
  *         [--areas areas.csv] [--scenarios scenarios.csv] [--max-rounds 5]
  *
  * full: cold and warm load times, retained heap, latency of random, local and named
  * queries, forward and arrive-by. heap: load and a short run of queries only, to learn
- * whether the tier fits under the -Xmx it was started with. An OutOfMemoryError is caught and
- * reported with the phase it struck in, so the driver can tell "does not fit" from "broken".
+ * whether the tier fits under the -Xmx it was started with. points: what searching from an
+ * address costs, against searching from stops, on the same trips (see [pointSets]). An
+ * OutOfMemoryError is caught and reported with the phase it struck in, so the driver can tell
+ * "does not fit" from "broken".
  */
 
 private var phase = "start"
@@ -138,7 +143,11 @@ private fun run(options: Options): Report {
     val scenarios = mutableListOf<Scenario>()
 
     randomQueries(ids, options.warmup, options.seed + 1).forEach { forward(library, it, options.maxRounds) }
-    if (options.mode == "full") {
+    val extras = mutableMapOf<String, Double>()
+    if (options.mode == "points") {
+        phase = "points"
+        querySets += pointSets(library, stops, index, options, extras)
+    } else if (options.mode == "full") {
         val random = randomQueries(ids, options.queries, options.seed)
         querySets += timeSet("random", "forward", random) { forward(library, it, options.maxRounds) }
         querySets += timeSet("random", "arrive_by", random.map { it.copy(time = it.time + 3600) }) {
@@ -169,7 +178,64 @@ private fun run(options: Options): Report {
         heap = Heap(retainedMb = retained, peakMb = peakHeapMb()),
         querySets = querySets,
         scenarios = scenarios,
+        extras = extras,
     )
+}
+
+/**
+ * Searching from an address against searching from stops, on the same trips. Each trip, two
+ * points, is timed three ways (the stops are looked up before the clock starts):
+ *
+ *  - nearest: the stop closest to each point, as when a rider picks a stop;
+ *  - stops:   every stop within 500 m of each point, no walk counted, a multi-stop place;
+ *  - address: Location.Point, those same stops each with its own walk, plus the walk-only
+ *             journey under 1 km: what Pelo sends for an address.
+ *
+ * Forward for the three, arrive-by for nearest and address. Trips: the random set's stops each
+ * moved up to 300 m (an address near a stop), and the very points the local sets draw in
+ * areas.csv. extras.addressGridMb is the heap the first address search adds: raptor-kmp's
+ * spatial grid of the stops, built once.
+ */
+private fun pointSets(library: RaptorLibrary, stops: List<Stop>, index: StopIndex, options: Options,
+                      extras: MutableMap<String, Double>): List<QuerySet> {
+    val radius = WalkingParams.DEFAULT.maxAccessEgressDistanceMeters
+    val rounds = options.maxRounds
+    fun address(p: PointQuery, backward: Boolean = false): List<List<JourneyLeg>> {
+        val o = Location.Point(p.oLat, p.oLon)
+        val d = Location.Point(p.dLat, p.dLon)
+        return if (backward) library.getOptimizedPathsArriveBy(o, d, p.time, maxRounds = rounds)
+               else library.getOptimizedPaths(o, d, p.time, maxRounds = rounds)
+    }
+
+    collect()
+    val before = usedHeapMb()
+    address(PointQuery(stops[0].lat, stops[0].lon, stops[1].lat, stops[1].lon, 8 * 3600))
+    collect()
+    extras["addressGridMb"] = usedHeapMb() - before
+    randomPoints(stops, 50, options.seed + 2).forEach { address(it) }  // JIT: the address path
+
+    val sets = mutableListOf("random" to randomPoints(stops, options.queries, options.seed))
+    options.areas?.let(::readAreas)?.forEach { area -> localPoints(area, index, options.seed)?.let { sets += area.name to it } }
+    val results = mutableListOf<QuerySet>()
+    for ((name, points) in sets) {
+        val nearest = points.map { p ->
+            Query(listOfNotNull(index.nearest(p.oLat, p.oLon)?.id), listOfNotNull(index.nearest(p.dLat, p.dLon)?.id), p.time)
+        }
+        val around = points.map { p ->
+            Query(index.within(p.oLat, p.oLon, radius).map { it.id }, index.within(p.dLat, p.dLon, radius).map { it.id }, p.time)
+        }
+        fun stopsOrNothing(q: Query, backward: Boolean = false) = when {
+            q.origins.isEmpty() || q.destinations.isEmpty() -> emptyList()
+            backward -> arriveBy(library, q, rounds)
+            else -> forward(library, q, rounds)
+        }
+        results += timeSet("$name:nearest", "forward", nearest) { stopsOrNothing(it) }
+        results += timeSet("$name:stops", "forward", around) { stopsOrNothing(it) }
+        results += timeAll("$name:address", "forward", points, { it.time }) { address(it) }
+        results += timeSet("$name:nearest", "arrive_by", nearest.map { it.copy(time = it.time + 3600) }) { stopsOrNothing(it, true) }
+        results += timeAll("$name:address", "arrive_by", points.map { it.copy(time = it.time + 3600) }, { it.time }) { address(it, true) }
+    }
+    return results
 }
 
 private fun forward(library: RaptorLibrary, q: Query, maxRounds: Int) =
@@ -182,7 +248,11 @@ private fun arriveBy(library: RaptorLibrary, q: Query, maxRounds: Int) =
 private fun best(journeys: List<List<JourneyLeg>>): List<JourneyLeg>? =
     journeys.filter { it.isNotEmpty() }.minByOrNull { it.last().arrivalTime }
 
-private fun timeSet(name: String, direction: String, queries: List<Query>, call: (Query) -> List<List<JourneyLeg>>): QuerySet {
+private fun timeSet(name: String, direction: String, queries: List<Query>, call: (Query) -> List<List<JourneyLeg>>): QuerySet =
+    timeAll(name, direction, queries, { it.time }, call)
+
+private fun <T> timeAll(name: String, direction: String, queries: List<T>, timeOf: (T) -> Int,
+                        call: (T) -> List<List<JourneyLeg>>): QuerySet {
     val times = DoubleArray(queries.size)
     val durations = mutableListOf<Double>()
     val legs = mutableListOf<Double>()
@@ -193,7 +263,7 @@ private fun timeSet(name: String, direction: String, queries: List<Query>, call:
         times[i] = msSince(t)
         val journey = best(journeys) ?: return@forEachIndexed
         found++
-        val start = if (direction == "forward") q.time else journey.first().departureTime
+        val start = if (direction == "forward") timeOf(q) else journey.first().departureTime
         durations += (journey.last().arrivalTime - start) / 60.0
         legs += journey.count { !it.isTransfer }.toDouble()
     }

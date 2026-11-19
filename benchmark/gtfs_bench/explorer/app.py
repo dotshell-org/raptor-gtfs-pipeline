@@ -1,16 +1,18 @@
-"""Terminal explorer: pick two stops anywhere in France, get the itinerary from raptor-kmp.
+"""Terminal explorer: pick two stops or addresses anywhere in France, get the itinerary from raptor-kmp.
 
     python -m gtfs_bench.explorer                 # France, from data/raptor/france/bench
     python -m gtfs_bench.explorer --tier metropole:lyon
 
 The engine is the real one (raptor-kmp-jvm) running in a JVM next to the interface, with
 the network loaded once. The time shown for each search is the raptor-kmp call alone,
-measured inside the JVM.
+measured inside the JVM. Addresses come from Photon, as in Pelo (see geocode.py), and go to
+the engine as points: it walks to every stop within 500 m, as Pelo's searches do.
 """
 
 from __future__ import annotations
 
 import datetime as dt
+import functools
 import json
 import random
 import time
@@ -31,8 +33,11 @@ from textual.worker import get_current_worker
 
 from . import mapview
 from .backend import EngineServer, Journey, RouteResult
+from .geocode import Address, Geocoder
 from .loading import SPINNER, LoadingView, seconds_text
 from .places import Place, PlaceIndex
+
+Endpoint = Place | Address
 
 DAYS = ("lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche")
 MONTHS = ("janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre",
@@ -42,6 +47,12 @@ MONTHS = ("janvier", "février", "mars", "avril", "mai", "juin", "juillet", "ao�
 # default is 5 rounds; the explorer lets you go much higher, for the fun of absurd itineraries.
 DEFAULT_CHANGES = 4
 MAX_CHANGES = 99
+
+# Suggestions: stops first, then addresses, as in Pelo. Few stops, so addresses stay in view.
+PLACE_LIMIT = 12
+GEOCODE_DELAY_S = 0.3  # Pelo's debounce: ask Photon once typing pauses
+# Pelo's second try when an address finds nothing within 500 m on foot.
+FALLBACK_WALK_M = 6000.0
 
 # Start-up steps: key, label, weight = its usual seconds on France (cached communes), for the
 # overall bar.
@@ -93,6 +104,15 @@ def ms(value: float) -> str:
 
 def thousands(value: int) -> str:
     return f"{value:,}".replace(",", " ")
+
+
+def km(meters: float | None) -> str:
+    return f"{(meters or 0) / 1000:g} km".replace(".", ",")
+
+
+def engine_endpoint(endpoint: Endpoint) -> list[int] | dict:
+    """What the engine is sent for a choice: a place's stop ids, or an address's point."""
+    return endpoint.endpoint() if isinstance(endpoint, Address) else endpoint.ids
 
 
 def parse_time(text: str) -> int | None:
@@ -167,16 +187,18 @@ class Explorer(App):
 
     def __init__(self, data_dir: Path, tier_name: str, java: str | None = None, xmx: str = "2g",
                  cache_dir: Path | None = None, reference_day: dt.date | None = None, server=None,
-                 commune_lookup=None, outline: list | None = None):
+                 commune_lookup=None, outline: list | None = None, geocoder=None):
         super().__init__()
         self.commune_lookup, self.given_outline = commune_lookup, outline  # injected in tests
         self.data_dir, self.tier_name, self.java, self.xmx = data_dir, tier_name, java, xmx
         self.cache_dir, self.reference_day = cache_dir, reference_day
         self.server = server  # injected in tests
+        self.geocoder = geocoder if geocoder is not None else Geocoder(cache_dir / "geocode.json" if cache_dir else None)
         self.index: PlaceIndex | None = None
         self.outline: list = []
-        self.chosen: dict[str, Place | None] = {"from": None, "to": None}
-        self.suggestions: dict[str, list[Place]] = {"from": [], "to": []}
+        self.chosen: dict[str, Endpoint | None] = {"from": None, "to": None}
+        self.suggestions: dict[str, list[Endpoint]] = {"from": [], "to": []}
+        self.places_found: dict[str, list[Place]] = {"from": [], "to": []}
         self.result: RouteResult | None = None
         self.journey: Journey | None = None
         self.zoom = True
@@ -192,11 +214,11 @@ class Explorer(App):
     def compose(self) -> ComposeResult:
         yield Header()
         with Vertical(id="left"):
-            yield Label("Départ", classes="label")
-            yield Input(placeholder="Bellecour, Châtelet, Gare de Brest…", id="from", disabled=True)
+            yield Label("Départ · arrêt ou adresse", classes="label")
+            yield Input(placeholder="Bellecour, Châtelet, 20 rue de la Paix Paris…", id="from", disabled=True)
             yield OptionList(id="from_list")
-            yield Label("Arrivée", classes="label")
-            yield Input(placeholder="Part-Dieu, La Défense…", id="to", disabled=True)
+            yield Label("Arrivée · arrêt ou adresse", classes="label")
+            yield Input(placeholder="Part-Dieu, La Défense, Tour Eiffel…", id="to", disabled=True)
             yield OptionList(id="to_list")
             when = f"Quand · horaires du {day_text(self.reference_day)}" if self.reference_day else "Quand"
             yield Label(when, id="when_label", classes="label")
@@ -328,28 +350,67 @@ class Explorer(App):
         if place is not None and event.value == place.name:
             return
         self.chosen[field] = None
-        found = self.index.search(event.value, 30) if self.index and len(event.value.strip()) >= 2 else []
-        self.suggestions[field] = found
+        found = self.index.search(event.value, PLACE_LIMIT) if self.index and len(event.value.strip()) >= 2 else []
+        self.places_found[field] = found
+        self.fill(field, found, [])
+        other = self.chosen["to" if field == "from" else "from"]
+        near = (other.lat, other.lon) if other is not None else None
+        self.run_worker(functools.partial(self.find_addresses, field, event.value, near), thread=True,
+                        exclusive=True, group=f"geocode-{field}")
+
+    def find_addresses(self, field: str, text: str, near: tuple[float, float] | None) -> None:
+        """Ask Photon once typing pauses; a newer keystroke cancels this worker."""
+        time.sleep(GEOCODE_DELAY_S)
+        worker = get_current_worker()
+        if worker.is_cancelled:
+            return
+        found = self.geocoder.search(text, near)
+        if not worker.is_cancelled:
+            self.call_from_thread(self.add_addresses, field, text, found)
+
+    def add_addresses(self, field: str, text: str, addresses: list[Address]) -> None:
+        if self.query_one(f"#{field}", Input).value != text or self.chosen[field] is not None:
+            return  # typed on, or picked something, meanwhile
+        self.fill(field, self.places_found[field], addresses)
+
+    def fill(self, field: str, places: list[Place], addresses: list[Address]) -> None:
+        """Stops, then a separator and the addresses. Option ids index self.suggestions."""
+        self.suggestions[field] = [*places, *addresses]
         options = self.query_one(f"#{field}_list", OptionList)
+        kept = options.highlighted if places else None
         options.clear_options()
-        options.add_options([Option(p.label(), id=str(i)) for i, p in enumerate(found)])
-        if found:
-            options.highlighted = 0
+        items = [Option(p.label(), id=str(i)) for i, p in enumerate(places)]
+        if addresses:
+            items.append(Option(Text("Adresses · Photon", style="dim italic"), id="addresses", disabled=True))
+            items += [Option(a.option_text(), id=str(len(places) + i)) for i, a in enumerate(addresses)]
+        options.add_options(items)
+        if places:
+            options.highlighted = kept if kept is not None and kept < len(places) else 0
+        elif addresses:
+            options.highlighted = 1  # the first address, under the separator
+
+    def highlighted_suggestion(self, field: str) -> Endpoint | None:
+        options = self.query_one(f"#{field}_list", OptionList)
+        if options.highlighted is not None:
+            option = options.get_option_at_index(options.highlighted)
+            if option.id and option.id.isdigit():
+                return self.suggestions[field][int(option.id)]
+        return self.suggestions[field][0] if self.suggestions[field] else None
 
     @on(Input.Submitted, "#from, #to")
     def pick_first(self, event: Input.Submitted) -> None:
         field = event.input.id
-        options = self.query_one(f"#{field}_list", OptionList)
-        index = options.highlighted if options.highlighted is not None else 0
-        if self.suggestions[field]:
-            self.choose(field, self.suggestions[field][min(index, len(self.suggestions[field]) - 1)])
+        choice = self.highlighted_suggestion(field)
+        if choice is not None:
+            self.choose(field, choice)
 
     @on(OptionList.OptionSelected, "#from_list, #to_list")
     def pick(self, event: OptionList.OptionSelected) -> None:
         field = event.option_list.id.removesuffix("_list")
-        self.choose(field, self.suggestions[field][int(event.option.id)])
+        if event.option.id and event.option.id.isdigit():
+            self.choose(field, self.suggestions[field][int(event.option.id)])
 
-    def choose(self, field: str, place: Place) -> None:
+    def choose(self, field: str, place: Endpoint) -> None:
         self.chosen[field] = place
         box = self.query_one(f"#{field}", Input)
         with box.prevent(Input.Changed):
@@ -401,9 +462,11 @@ class Explorer(App):
             self.action_route()
 
     @work(thread=True, exclusive=True, group="route")
-    def compute(self, origin: Place, destination: Place, when: int, arrive_by: bool, changes: int) -> None:
+    def compute(self, origin: Endpoint, destination: Endpoint, when: int, arrive_by: bool, changes: int) -> None:
+        addresses = isinstance(origin, Address) or isinstance(destination, Address)
         try:
-            result = self.server.route(origin.ids, destination.ids, when, arrive_by, max_rounds=changes + 1)
+            result = self.server.route(engine_endpoint(origin), engine_endpoint(destination), when, arrive_by,
+                                       max_rounds=changes + 1, fallback_walk_m=FALLBACK_WALK_M if addresses else None)
         except Exception as error:  # the engine said no: show it, keep the app alive
             if "OutOfMemoryError" in str(error):
                 message = (f"Pas assez de mémoire pour {limit_text(changes)} : relance l'explorateur avec "
@@ -416,7 +479,7 @@ class Explorer(App):
             return
         self.call_from_thread(self.show, origin, destination, when, arrive_by, changes, result)
 
-    def show(self, origin: Place, destination: Place, when: int, arrive_by: bool, changes: int,
+    def show(self, origin: Endpoint, destination: Endpoint, when: int, arrive_by: bool, changes: int,
              result: RouteResult) -> None:
         self.result, self.changes_used, self.busy = result, changes, None
         journeys = sorted(result.journeys, key=lambda j: (j.changes, j.arrival))
@@ -430,8 +493,10 @@ class Explorer(App):
         if self.journey is None:
             summary = Text(f"Aucun itinéraire, {verb} {hhmm(when)}\n", style="bold #e34948")
             summary.append(f"calculé en {ms(result.ms)} · {limit_text(changes)}\n", style="dim")
-            hint = " · essaie plus de correspondances" if changes < 10 else " · ni même en zigzaguant"
-            summary.append("sans TGV ni Intercités pour l'instant" + hint, style="dim")
+            if result.fallback:
+                summary.append(f"même en marchant jusqu'à {km(result.walk_radius)} depuis l'adresse", style="dim")
+            else:
+                summary.append("essaie plus de correspondances" if changes < 10 else "ni même en zigzaguant", style="dim")
             self.query_one("#summary", Static).update(summary)
             self.query_one("#legs", Static).update("")
         else:
@@ -460,6 +525,9 @@ class Explorer(App):
                        f"{'optimaux' if count > 1 else 'optimal'} (moins de changements ↔ plus tôt)\n", style="#1baf7a")
         day = f" · horaires du {day_text(self.reference_day)}" if self.reference_day else ""
         summary.append(limit_text(self.changes_used) + day, style="dim")
+        if result.fallback:
+            summary.append(f"\nrien d'utile à 500 m à pied : marche élargie à {km(result.walk_radius)}, comme Pelo",
+                           style="#eda100")
         self.query_one("#summary", Static).update(summary)
         self.query_one("#legs", Static).update(legs_table(journey))
         self.query_one("#legs_box", VerticalScroll).scroll_home(animate=False)

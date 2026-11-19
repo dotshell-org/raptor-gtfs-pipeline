@@ -137,6 +137,32 @@ def heap_sweep(tiers=SWEEP_TIERS, ceilings=SWEEP_XMX, java: str | None = None, p
     return rows
 
 
+ADDRESS_TIERS = ("metropole:lyon", "france-connexe")
+
+
+def address_costs(tiers=ADDRESS_TIERS, xmx: str = "2g", java: str | None = None, progress=print) -> list[dict]:
+    """What searching from an address costs, against searching from stops (harness --mode points).
+
+    One row per tier, query set and way of asking (nearest stop, stops within 500 m, address),
+    in results/address_queries.csv; the reports in results/engine/address/. address_grid_mb is
+    the heap the first address search adds (raptor-kmp's spatial grid of the stops).
+    """
+    rows = []
+    for key in tiers:
+        report = run_harness(key, xmx, "points", out=RESULTS_DIR / "engine" / "address" / f"{key.replace(':', '-')}.json",
+                             java=java)
+        grid = (report.get("extras") or {}).get("addressGridMb")
+        for row in flatten(report):
+            name, _, way = row.get("query_set", "").partition(":")
+            rows.append({"tier": key, "status": row["status"], "query_set": name, "asked_as": way,
+                         "direction": row.get("direction"), "queries": row.get("queries"), "found": row.get("found"),
+                         **{k: v for k, v in row.items() if k.startswith("latency_")},
+                         "median_duration_min": row.get("median_duration_min"), "address_grid_mb": grid})
+        progress(f"{key}: {report['status']}" + (f", grid {grid:.1f} MB" if grid is not None else ""))
+        _write_csv(RESULTS_DIR / "address_queries.csv", rows)
+    return rows
+
+
 def _write_csv(path: Path, rows: list[dict]) -> None:
     if not rows:
         return
@@ -160,7 +186,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--xmx", default="12g", help="heap ceiling of the full runs")
     parser.add_argument("--java", help="java executable (default: $JAVA_HOME, then PATH)")
     parser.add_argument("--no-sweep", action="store_true", help="skip the heap-ceiling sweep")
+    parser.add_argument("--addresses", action="store_true",
+                        help="only time address searches against stop searches (--tiers, default Lyon and France connexe)")
     args = parser.parse_args(argv)
+    if args.addresses:
+        rows = address_costs(tuple(args.tiers.split(",")) if args.tiers else ADDRESS_TIERS,
+                             args.xmx if args.xmx != "12g" else "2g", args.java)
+        return 0 if rows and all(r["status"] == "ok" for r in rows) else 1
     reports = run_all(args.tiers.split(",") if args.tiers else None, args.xmx, args.java)
     if not args.no_sweep:
         heap_sweep(java=args.java)
