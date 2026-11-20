@@ -81,6 +81,11 @@ TASKS: tuple[Task, ...] = (
          "audit de connexité, préfectures, lignes scolaires. --variants france-complete ; "
          "--skip-build : remesurer sans reconstruire.",
          "gtfs_bench.connected", "--variants france-complete", "~25 min par variante", heavy=True),
+    Task("tiers", "Construire les métropoles et régions", "Données à jour",
+         "Fusionne et convertit les 22 métropoles et 13 régions avec les jours types et la fenêtre de "
+         "france-live, lignes scolaires comprises, sans banc d'essai ni résultats. "
+         "--tiers metropole:lyon,region:84 : seulement ceux-là.",
+         "gtfs_bench.tiers", "", "~30 min", heavy=True),
     Task("school", "Lignes scolaires des réseaux convertis", "Chaîne du notebook",
          "Repère les lignes scolaires, écrit school_routes.json à côté des .bin, vérifie la numérotation "
          "contre le moteur et mesure l'interrupteur.",

@@ -1,9 +1,9 @@
 {
- "computed_on": "2026-11-19",
- "start": "2026-11-19",
+ "computed_on": "2026-11-20",
+ "start": "2026-11-20",
  "end": "2026-12-18",
  "binding_feed": "idfm",
- "binding_share": 0.26699,
+ "binding_share": 0.26816,
  "days": {
   "semaine": "2026-11-24",
   "samedi": "2026-11-28",
@@ -17,12 +17,12 @@
   },
   {
    "feed_id": "tignes",
-   "share": 0.0003,
+   "share": 0.00033,
    "last_day": "2026-11-27"
   },
   {
    "feed_id": "pastel",
-   "share": 0.00086,
+   "share": 0.00087,
    "last_day": "2026-12-03"
   },
   {
@@ -37,11 +37,11 @@
   },
   {
    "feed_id": "pays-de-gex",
-   "share": 0.00135,
+   "share": 0.00136,
    "last_day": "2026-12-12"
   }
  ],
- "feeds": 249,
+ "feeds": 248,
  "max_feed_share": 0.005,
  "max_lost_share": 0.01
 }
