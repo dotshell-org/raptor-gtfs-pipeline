@@ -1,4 +1,4 @@
-"""The console's tabs besides the itinerary: updates, data, settings, help.
+"""The console's tabs besides the itinerary and the updates (updates.py): data, settings, help.
 
 Each is a widget the Explorer app mounts in its TabbedContent.
 """
@@ -11,16 +11,15 @@ from pathlib import Path
 
 from rich.table import Table
 from rich.text import Text
-from textual import on, work
+from textual import on
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.widgets import Button, DataTable, Input, Label, MarkdownViewer, RichLog, Static, Switch
+from textual.widgets import Button, DataTable, Input, Label, MarkdownViewer, Static, Switch
 
 from . import settings as settings_module
 from .daytypes import LABELS
 from .dataset import Installed, megabytes
 from .paths import CONSOLE_DIR, DOCS_DIR
-from .sync import SyncRun
 
 GUIDE_MD = DOCS_DIR / "GUIDE.md"
 GUIDE_PDF = DOCS_DIR / "guide-console.pdf"
@@ -44,129 +43,6 @@ def open_file(path: Path) -> bool:
 
 def local_time(moment: dt.datetime | None) -> str:
     return moment.astimezone().strftime("%d/%m/%Y %H:%M") if moment else "?"
-
-
-# ── updates ──────────────────────────────────────────────────────────────────────────
-
-
-class UpdatePane(Vertical):
-    """Check the server and install its latest version, with SyncKt (dataset-sync)."""
-
-    DEFAULT_CSS = """
-    UpdatePane { padding: 0 1; }
-    UpdatePane #up-state { height: auto; padding: 1 1; background: $boost; }
-    UpdatePane #up-bar { height: 3; margin-top: 1; }
-    UpdatePane #up-bar Button { margin-right: 1; }
-    UpdatePane #up-progress { height: auto; padding: 0 1; }
-    UpdatePane #up-log { height: 1fr; border: round $panel-lighten-2; }
-    """
-
-    def __init__(self, runner=SyncRun, **kwargs):
-        super().__init__(**kwargs)
-        self.runner = runner
-        self.running: SyncRun | None = None
-        self.installed_version: str | None = None
-        self.latest: dict | None = None
-        self.plan: dict | None = None
-        self.messages: list[str] = []  # what the log says, in plain text
-
-    def say(self, text: str | Text) -> None:
-        self.messages.append(text.plain if isinstance(text, Text) else text)
-        self.query_one("#up-log", RichLog).write(text)
-
-    def compose(self) -> ComposeResult:
-        yield Static("", id="up-state")
-        with Horizontal(id="up-bar"):
-            yield Button("Vérifier", id="up-check")
-            yield Button("Mettre à jour", id="up-run", variant="primary")
-        yield Static("", id="up-progress")
-        yield RichLog(id="up-log", wrap=True, markup=False, highlight=False, max_lines=2000)
-
-    def on_mount(self) -> None:
-        self.describe()
-
-    def describe(self) -> None:
-        """What is installed, what the server has, what an update would cost."""
-        installed: Installed | None = self.app.installed
-        self.installed_version = installed.version if installed else None
-        text = Text()
-        if installed:
-            text.append("Installé : ", style="bold")
-            text.append(f"{installed.version}", style=f"bold {GREEN}")
-            text.append(f"  ·  {megabytes(installed.latest.get('total_bytes'))}\n", style="dim")
-        else:
-            text.append("Aucune version installée.\n", style=f"bold {ORANGE}")
-            text.append("« Mettre à jour » télécharge la dernière version de france-live (le paquet complet, "
-                        "environ 45 Mo) depuis la livraison officielle.\n", style="dim")
-        if self.latest:
-            text.append("Serveur : ", style="bold")
-            text.append(f"{self.latest['version']}  ·  {megabytes(self.latest.get('total_bytes'))}\n")
-        if self.plan:
-            method = {"delta": "par différence", "full": "paquet complet", "files": "fichier par fichier"}.get(
-                self.plan["method"], self.plan["method"])
-            text.append(f"Mise à jour : {method}, {megabytes(self.plan['bytes'])} à télécharger", style=BLUE)
-        elif self.latest and self.installed_version == self.latest.get("version"):
-            text.append("À jour.", style=GREEN)
-        self.query_one("#up-state", Static).update(text)
-
-    @on(Button.Pressed, "#up-check")
-    def check(self) -> None:
-        self.start(check=True)
-
-    @on(Button.Pressed, "#up-run")
-    def update(self) -> None:
-        self.start(check=False)
-
-    def start(self, check: bool) -> bool:
-        if self.running is not None:
-            return False
-        settings = self.app.settings
-        self.running = self.runner(self.app.sync_root, settings.server.base_url, settings.server.epoch, check=check,
-                                   java=settings.engine.java or None)
-        for button in ("#up-check", "#up-run"):
-            self.query_one(button, Button).disabled = True
-        self.say(Text(
-            f"\n▶ {'Vérification' if check else 'Mise à jour'}  ({dt.datetime.now():%H:%M:%S})", style=f"bold {BLUE}"))
-        self.follow(self.running)
-        return True
-
-    @work(thread=True, exclusive=True, group="sync")
-    def follow(self, run: SyncRun) -> None:
-        for event in run.events():
-            self.app.call_from_thread(self.apply, event)
-        self.app.call_from_thread(self.finished, run)
-
-    def apply(self, event: dict) -> None:
-        kind = event.get("type")
-        if kind == "latest":
-            self.latest = event
-            self.describe()
-        elif kind == "plan":
-            self.plan = event
-            self.describe()
-            self.say(f"{event['method']} : {megabytes(event['bytes'])} pour {event['to']}")
-        elif kind == "up_to_date":
-            self.plan = None
-            self.describe()
-            self.say(Text(f"À jour : {event['version']}", style=GREEN))
-        elif kind == "progress":
-            done, total = event["done"], max(event["total"], 1)
-            self.query_one("#up-progress", Static).update(f"{megabytes(done)} / {megabytes(total)}  ({done * 100 // total} %)")
-        elif kind == "file":
-            self.say(f"  ✓ {event['path']}")
-        elif kind == "done":
-            self.say(Text(f"✓ {event['version']} installée ({event['method']}, {megabytes(event['downloaded'])} "
-                           f"téléchargés)", style=f"bold {GREEN}"))
-        elif kind == "error":
-            self.say(Text(f"✗ {event.get('kind')}: {event.get('message')}", style=f"bold {RED}"))
-
-    def finished(self, run: SyncRun) -> None:
-        self.running = None
-        for button in ("#up-check", "#up-run"):
-            self.query_one(button, Button).disabled = False
-        self.plan = None if run.code == 0 and "--check" not in run.command else self.plan
-        self.app.sync_finished(run)
-        self.describe()
 
 
 # ── data ─────────────────────────────────────────────────────────────────────────────

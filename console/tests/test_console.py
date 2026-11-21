@@ -126,18 +126,44 @@ class FakeSync:
             yield {"type": "plan", "method": "delta" if installed else "full", "from": installed and installed.version,
                    "to": V2, "bytes": 187423 if installed else 43718605, "full_bytes": 43718605, "total_bytes": 211102506}
         else:
-            yield from FakeSync.script
+            for event in FakeSync.script:
+                if event["type"] == "_wait":        # hold here until stop(), as a download would
+                    self.stopped.wait(5)
+                    self.code = 1
+                    return
+                yield event
             if FakeSync.install_version and any(e["type"] == "done" for e in FakeSync.script):
                 install(self.root.parent, FakeSync.install_version)
         self.code = 1 if any(e["type"] == "error" for e in FakeSync.script) and not self.check else 0
 
+    stopped = threading.Event()
+
     def stop(self):
-        pass
+        FakeSync.stopped.set()
 
 
 @pytest.fixture(autouse=True)
 def fresh_fake_sync():
     FakeSync.script, FakeSync.install_version, FakeSync.runs = [], None, []
+    FakeSync.stopped = threading.Event()
+
+
+def delta_script(resumed_from: int = 0) -> list[dict]:
+    """SyncKt's lines for V1 -> V2 by the delta, as a real run prints them (sizes of 21 Nov)."""
+    files = [("dataset.json", 3105, 2900, 0, 205, 0), ("samedi/routes.bin", 32234641, 32100000, 0, 134641, 0),
+             ("samedi/stops.bin", 29212195, 29212195, 0, 0, 0), ("samedi/index.bin", 7546094, 0, 0, 0, 7546094)]
+    total = 187423
+    lines = [{"type": "plan", "method": "delta", "from": V1, "to": V2, "bytes": total, "full_bytes": 43718605,
+              "total_bytes": 211102506}]
+    lines += [{"type": "progress", "done": d, "total": total} for d in (resumed_from or 65536, 131072, total)]
+    lines += [{"type": "file", "path": p, "bytes": b, "copied": c, "reused": r, "inserted": i, "derived": d, "index": k,
+               "count": len(files)} for k, (p, b, c, r, i, d) in enumerate(files)]
+    lines += [{"type": "switched", "version": V2},
+              {"type": "done", "from": V1, "version": V2, "method": "delta", "downloaded": total - resumed_from,
+               "download_ms": 412, "apply_ms": 2870, "bytes": sum(f[1] for f in files),
+               "copied": sum(f[2] for f in files), "reused": 0, "inserted": sum(f[4] for f in files),
+               "derived": sum(f[5] for f in files)}]
+    return lines
 
 
 REPUBLIQUE = Address("10 Rue de la République", "69002 Lyon", 45.7625, 4.8357)
@@ -649,6 +675,117 @@ def test_a_failed_update_keeps_the_version_and_says_why(tmp_path):
             assert app.installed.version == V1 and len(app.servers) == 1
             assert any("SHA-256 mismatch" in m for m in app.query_one("#update").messages)
     asyncio.run(scenario())
+
+
+def test_update_drawings():
+    from met_console.updates import offers_text, progress_text, result_text, share_bar
+
+    bar = share_bar({"bytes": 100, "copied": 70, "reused": 0, "inserted": 25, "derived": 5}, width=20)
+    assert len(bar.plain) == 20 and bar.plain.count("░") == 0
+    assert len(share_bar({"bytes": 0}, width=20).plain) == 20
+    resumed = progress_text(131072, 187423, 50_000, 0, resumed_from=93711).plain
+    assert "70 %" in resumed and "repris à 92 Ko" in resumed and "/s" in resumed
+    offers = offers_text({"version": V2, "total_bytes": 211102506, "full_bytes": 43718605,
+                          "deltas": {V1: 187423, "20261118-00000000": 190000}}, V1).plain
+    assert "paquet complet" in offers and "← la vôtre" in offers and "0,4 % du complet" in offers
+    too_old = offers_text({"version": V2, "total_bytes": 1, "full_bytes": 1, "deltas": {V1: 1}}, "20261001-0").plain
+    assert "trop ancienne" in too_old
+    done = delta_script()[-1]
+    text = result_text(done, delta_script()[0], 3.4, 4).plain
+    assert "183 Ko téléchargés" in text and "0,4 % du paquet complet" in text and "0,1 % de la version" in text
+    assert "copié de la version installée" in text and "recalculé sur place" in text and "SHA-256" in text
+
+
+def test_an_update_shows_where_the_bytes_came_from_and_is_kept_in_the_history(tmp_path):
+    install(tmp_path)
+
+    async def scenario():
+        app = make_app(tmp_path)
+        async with app.run_test(size=(170, 50)) as pilot:
+            await wait_ready(app, pilot)
+            await pilot.press("f2")
+            update = app.query_one("#update")
+            FakeSync.script, FakeSync.install_version = delta_script(), V2
+            await pilot.click("#up-run")
+            await wait_ready(app, pilot)
+            await pilot.pause(0.3)
+            assert app.installed.version == V2
+            assert update.query_one("#up-files").row_count == 4
+            result = str(update.query_one("#up-result").render())
+            assert "par différence depuis" in result and "0,4 % du paquet complet" in result
+            assert "100 %" in str(update.query_one("#up-progress").render())
+            entries = json.loads((tmp_path / "history.json").read_text(encoding="utf-8"))
+            assert entries[0]["ok"] and entries[0]["from"] == V1 and entries[0]["to"] == V2
+            assert entries[0]["downloaded"] == 187423 and entries[0]["full_bytes"] == 43718605
+            assert update.query_one("#up-history").row_count == 1
+            assert "À jour" in str(update.query_one("#up-state").render()) or V2 in str(update.query_one("#up-state").render())
+        # The history is there at the next start.
+        again = make_app(tmp_path)
+        async with again.run_test(size=(170, 50)) as pilot:
+            await wait_ready(again, pilot)
+            assert again.query_one("#up-history").row_count == 1
+    asyncio.run(scenario())
+
+
+def test_a_resumed_download_says_where_it_started(tmp_path):
+    install(tmp_path)
+    partial = tmp_path / "france-live" / ".download"
+    partial.mkdir()
+    (partial / f"{V2}-from-{V1}.pack").write_bytes(b"x" * 93711)
+
+    async def scenario():
+        app = make_app(tmp_path)
+        async with app.run_test(size=(170, 50)) as pilot:
+            await wait_ready(app, pilot)
+            update = app.query_one("#update")
+            assert "interrompu attend" in str(update.query_one("#up-hint").render())
+            FakeSync.script, FakeSync.install_version = delta_script(resumed_from=93711), V2
+            update.start(check=False)
+            await wait_ready(app, pilot)
+            await pilot.pause(0.3)
+            assert update.resumed_from == 93711
+            assert "repris à 92 Ko" in str(update.query_one("#up-progress").render())
+            assert json.loads((tmp_path / "history.json").read_text(encoding="utf-8"))[0]["resumed_from"] == 93711
+    asyncio.run(scenario())
+
+
+def test_stopping_an_update_keeps_the_version(tmp_path):
+    install(tmp_path)
+
+    async def scenario():
+        app = make_app(tmp_path)
+        async with app.run_test(size=(170, 50)) as pilot:
+            await wait_ready(app, pilot)
+            await pilot.press("f2")
+            update = app.query_one("#update")
+            FakeSync.script = delta_script()[:2] + [{"type": "_wait"}]
+            await pilot.click("#up-run")
+            await pilot.pause(0.3)
+            assert not update.query_one("#up-stop").disabled and update.query_one("#up-run").disabled
+            await pilot.click("#up-stop")
+            await pilot.pause(0.4)
+            assert update.running is None and app.installed.version == V1
+            assert "intacte" in str(update.query_one("#up-result").render())
+            entry = json.loads((tmp_path / "history.json").read_text(encoding="utf-8"))[0]
+            assert not entry["ok"] and entry["error"].startswith("Arrêtée")
+    asyncio.run(scenario())
+
+
+@pytest.mark.skipif(not __import__("os").environ.get("CONSOLE_LIVE_TEST") or not (ENGINE_INSTALL / "lib").exists(),
+                    reason="CONSOLE_LIVE_TEST=1 and the engine: downloads ~45 MB from api.dotshell.eu")
+def test_live_sync_from_the_official_delivery(tmp_path):
+    root = tmp_path / "france-live"
+    check = list(SyncRun(root, "https://api.dotshell.eu", "epoch-2-3", check=True).events())
+    assert [e["type"] for e in check] == ["installed", "latest", "plan"] and check[-1]["method"] == "full"
+    run = SyncRun(root, "https://api.dotshell.eu", "epoch-2-3")
+    events = list(run.events())
+    assert run.code == 0, events[-1]
+    done = events[-1]
+    assert done["type"] == "done" and done["method"] == "full" and done["downloaded"] == check[-1]["bytes"]
+    installed = dataset.installed(root)
+    assert installed.version == done["version"] and installed.day_types()[:3] == ["semaine", "samedi", "dimanche"]
+    again = list(SyncRun(root, "https://api.dotshell.eu", "epoch-2-3").events())
+    assert again[-1]["type"] in ("up_to_date", "done")
 
 
 INSTALLED = Path(__file__).resolve().parent.parent / "data"

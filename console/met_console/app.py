@@ -38,9 +38,10 @@ from .daytypes import LABELS, Plan
 from .geocode import Address, Geocoder
 from .loading import SPINNER, LoadingView, seconds_text
 from .mapview import MapView
-from .panes import DataPane, HelpPane, SettingsPane, UpdatePane
+from .panes import DataPane, HelpPane, SettingsPane
 from .places import Place, PlaceIndex
 from .sync import SyncRun
+from .updates import UpdatePane
 
 Endpoint = Place | Address
 
