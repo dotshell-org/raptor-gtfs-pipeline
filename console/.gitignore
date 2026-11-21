@@ -1,0 +1,6 @@
+# The installed dataset, caches and history: per machine, rebuilt by the console.
+data/
+# The engine's own Gradle build.
+engine/build/
+engine/.gradle/
+engine/.kotlin/
