@@ -788,6 +788,16 @@ def test_live_sync_from_the_official_delivery(tmp_path):
     assert again[-1]["type"] in ("up_to_date", "done")
 
 
+def test_the_guide_renders_with_its_screenshots_inside(tmp_path):
+    from met_console.guide import GUIDE_MD, IMG, render_html
+
+    html = render_html(out=tmp_path / "guide.html").read_text(encoding="utf-8")
+    assert "Guide de la console" in html and "L'onglet Mise à jour" in html.replace("&#x27;", "'")
+    referenced = set(__import__("re").findall(r"img/([\w-]+\.svg)", GUIDE_MD.read_text(encoding="utf-8")))
+    assert referenced and referenced <= {p.name for p in IMG.glob("*.svg")}, "every screenshot the guide shows exists"
+    assert 'src="img/' not in html and html.count("data:image/svg+xml;base64,") == len(referenced)
+
+
 INSTALLED = Path(__file__).resolve().parent.parent / "data"
 
 

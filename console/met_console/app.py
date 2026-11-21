@@ -286,6 +286,10 @@ class Explorer(App):
                 yield HelpPane(id="help")
         yield Footer()
 
+    def loader(self) -> LoadingView:
+        """The current loading checklist (a version switch mounts a new one)."""
+        return self.query_one("#loader" if self.loads == 0 else f"#loader-{self.loads}", LoadingView)
+
     def network_name(self) -> str:
         return f"france-live {self.installed.version}" if self.installed else "france-live"
 
@@ -344,7 +348,7 @@ class Explorer(App):
         self.query_one("#day").display = bool(self.plan)
         self.set_interval(1 / 12, self.spin)
         self.query_one("#empty").display = self.installed is None
-        self.query_one(LoadingView).display = self.installed is not None
+        self.loader().display = self.installed is not None
         if self.installed is not None:
             self.load()
         if self.settings.server.check_on_start:
@@ -355,7 +359,7 @@ class Explorer(App):
     @work(thread=True, exclusive=True, group="load")
     def load(self) -> None:
         started = time.perf_counter()
-        loader = self.query_one(LoadingView)
+        loader = self.loader()
         current = "engine"
 
         def step(method: str, key: str, *args) -> None:
@@ -459,7 +463,7 @@ class Explorer(App):
         self.set_timer(0.8, self.reveal)  # leave the finished checklist on screen a moment
 
     def reveal(self) -> None:
-        self.query_one(LoadingView).display = False
+        self.loader().display = False
         for widget in ("#summary", "#legs_box", "#map", "#map_legend"):
             self.query_one(widget).display = True
         self.call_after_refresh(self.redraw_map)
@@ -774,12 +778,13 @@ class Explorer(App):
         for widget in ("#summary", "#alternatives", "#legs_box", "#map", "#map_legend"):
             self.query_one(widget).display = False
         self.query_one("#empty").display = False
-        old = self.query_one(LoadingView)
+        # A new checklist; the old one may still be mounting after a quick earlier switch.
+        for old in self.query(LoadingView):
+            old.remove()
         self.loads += 1
         new = LoadingView(self.network_name(), LOAD_STEPS, id=f"loader-{self.loads}")
-        self.query_one("#right").mount(new, before=old)
-        old.remove()
-        self.load()
+        self.query_one("#right").mount(new, before=self.query_one("#summary"))
+        self.call_after_refresh(self.load)
 
     @on(Button.Pressed, "#swap")
     def action_swap(self) -> None:

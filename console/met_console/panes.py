@@ -201,7 +201,9 @@ class SettingsPane(VerticalScroll):
         self.path = path
 
     def compose(self) -> ComposeResult:
-        yield Static(f"Réglages de la console, enregistrés dans {self.path} (cette machine seulement).", id="set-intro")
+        shown = self.path.relative_to(CONSOLE_DIR) if self.path.is_relative_to(CONSOLE_DIR) else self.path
+        yield Static(f"Réglages de la console, enregistrés dans {shown.as_posix()} (cette machine seulement).",
+                     id="set-intro")
         current = settings_module.load(self.path)
         group = None
         for key, label, name, title, help_text, kind, value in settings_module.fields_of(current):
