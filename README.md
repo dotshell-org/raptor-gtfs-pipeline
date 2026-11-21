@@ -149,6 +149,13 @@ Every run writes a self-describing `dataset.json` at the output root, so a consu
 
 *No changes to the v2 binary specification during the Kotlin migration. See existing specs for binary chunk layout.*
 
+## Also in this repository
+
+| Folder | What |
+|---|---|
+| [`console/`](console/README.md) | A terminal console for france-live, the whole-France network: it installs and updates it from the official delivery with the apps' library (dataset-sync) and routes on it with raptor-kmp |
+| [`archive/france-python/`](archive/france-python/README.md) | The Python build of france-live that preceded met-dataset-server, kept to rebuild by hand. The whole-France benchmark it came from is in the git tag `benchmark-final` |
+
 ## Development
 
 ```bash

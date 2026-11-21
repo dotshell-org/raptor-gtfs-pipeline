@@ -1,0 +1,3 @@
+# Byte for byte: the packs and the SHA-256 in the tests depend on these files' exact bytes.
+versions/** -text
+packs/** binary
