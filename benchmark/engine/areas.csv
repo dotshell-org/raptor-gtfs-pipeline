@@ -1,6 +1,0 @@
-name,lat_min,lat_max,lon_min,lon_max,pairs,min_km,max_km
-# Seeded trips drawn inside each box, replayed on every tier that covers it: the same Lyon
-# trips on the Lyon métropole, Auvergne-Rhône-Alpes and France. Does a bigger network slow
-# down the trips a rider in the city actually makes?
-lyon-local,45.70,45.81,4.77,4.93,300,1,10
-paris-local,48.80,48.92,2.22,2.45,300,1,12
