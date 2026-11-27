@@ -153,7 +153,6 @@ Every run writes a self-describing `dataset.json` at the output root, so a consu
 
 | Folder | What |
 |---|---|
-| [`archive/france-python/`](archive/france-python/README.md) | The Python build of france-live that preceded met-dataset-server, kept to rebuild by hand. The whole-France benchmark it came from is in the git tag `benchmark-final` |
 
 ## Development
 

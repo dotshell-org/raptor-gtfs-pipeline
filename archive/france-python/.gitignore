@@ -1,6 +1,0 @@
-# Per machine: the feeds, caches and outputs, the credentials, the environment, the settings.
-data/
-.env
-.venv/
-settings.json
-__pycache__/

@@ -69,7 +69,7 @@ temp_gtfs/
 build/
 !gradle/wrapper/gradle-wrapper.jar
 # What the old benchmark leaves on a machine (data, .venv, .env with credentials): no longer
-# tracked since it moved to archive/ and the tag benchmark-final.
+# tracked; the historical benchmark is available at tag benchmark-final.
 /benchmark/
 
 # Local data retained from the former console
