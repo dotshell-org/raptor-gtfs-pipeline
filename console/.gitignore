@@ -1,9 +1,0 @@
-# The installed dataset, caches, settings and history: per machine, rebuilt by the console.
-data/
-.venv/
-__pycache__/
-.pytest_cache/
-# The engine's own Gradle build.
-engine/build/
-engine/.gradle/
-engine/.kotlin/

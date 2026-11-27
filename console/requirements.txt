@@ -1,6 +1,0 @@
-textual==8.2.8
-rich==15.0.0
-numpy==2.5.5
-shapely==2.2.0
-requests==2.34.2
-pytest==9.2.0

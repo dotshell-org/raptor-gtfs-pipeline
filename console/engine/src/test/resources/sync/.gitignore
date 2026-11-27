@@ -1,3 +1,0 @@
-# The test's small versions, though the root ignores *.json and *.bin.
-!*.json
-!*.bin

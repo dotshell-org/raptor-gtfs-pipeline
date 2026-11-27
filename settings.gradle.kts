@@ -19,5 +19,3 @@ rootProject.name = "raptor-gtfs-pipeline"
 // consumer of the library never drags an argument parser into its own dependency tree.
 include(":core", ":cli")
 
-// console/engine (the france-live console's JVM side) is a build of its own: it runs newer
-// Kotlin libraries than this build compiles with. See console/README.md.
